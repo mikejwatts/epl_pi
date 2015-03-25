@@ -70,6 +70,8 @@
 #define SEL_POINT_B     1
 #define SEL_SEG         2
 
+//      Menu items
+#define ID_EPL_DELETE           8867
 
 //----------------------------------------------------------------------------------------------------------
 //    Forward declarations
@@ -126,6 +128,7 @@ public:
       bool MouseEventHook( wxMouseEvent &event );   
       
       void OnRolloverPopupTimerEvent( wxTimerEvent& event );
+      void PopupMenuHandler( wxCommandEvent& event );
       
       bool SaveConfig(void);
       void PopulateContextMenu( wxMenu* menu );
@@ -176,7 +179,12 @@ private:
       int                  mGPS_Watchdog;
       int                  mVar_Watchdog;
       double               mVar;
-      double               mHdm;
+//      double               mHdm;
+      double               m_ownship_cog;
+      bool                 m_head_active;
+      wxTimer              m_head_dog_timer;
+      
+      
       int                  mPriPosition;
       int                  mPriDateTime;
       int                  mPriVar;
@@ -210,6 +218,7 @@ public:
     ~PI_EventHandler();
     
     void OnTimerEvent( wxTimerEvent& event );
+    void PopupMenuHandler(wxCommandEvent& event );
     
 private:
     epl_pi              *m_parent;

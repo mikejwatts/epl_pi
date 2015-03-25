@@ -177,9 +177,10 @@ int epl_pi::Init( void )
     mPriHeadingM = 9;
     mPriHeadingT = 9;
     
-    mVar = NAN;
-    m_hdt = NAN;
-    mHdm = NAN;
+    mVar = 0;
+    m_hdt = 0;
+    m_ownship_cog = 0;
+    
     
 
     //    Get a pointer to the opencpn configuration object
@@ -208,8 +209,10 @@ int epl_pi::Init( void )
     m_pRolloverBrg = NULL;
     
     m_select = new Select();
-    
 
+    m_head_dog_timer.SetOwner( m_event_handler, HEAD_DOG_TIMER );
+    m_head_active = false;
+    
     ///  Testing
 #if 0
     brg_line *brg = new brg_line(350, TRUE_BRG, 42.033, -70.183, 2.);
@@ -297,6 +300,42 @@ wxString epl_pi::GetLongDescription()
 
 }
 
+void epl_pi::PopupMenuHandler( wxCommandEvent& event )
+{
+    bool handled = false;
+    switch( event.GetId() ) {
+        case ID_EPL_DELETE:
+            if(m_sel_brg){
+                
+                // delete the selectable
+                if(m_pFind){
+                    m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A );
+                    m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B );
+                    m_select->DeleteSelectableSegment( m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG );
+                }
+                
+                //  Remove the bearing from the array
+                for(unsigned int i=0 ; i < m_brg_array.GetCount() ; i++){
+                    brg_line *pb = m_brg_array.Item(i);
+                    if(pb == m_sel_brg){
+                        m_brg_array.Detach(i);
+                    }
+                }
+                
+                //  Finally, delete the bearing
+                delete m_sel_brg;
+            }
+            
+            handled = true;
+            break;
+        default:
+            break;
+    }
+    
+    if(!handled)
+        event.Skip();
+}
+    
 bool epl_pi::MouseEventHook( wxMouseEvent &event )
 {
     bool bret = false;
@@ -313,17 +352,16 @@ bool epl_pi::MouseEventHook( wxMouseEvent &event )
     wxPoint mp(event.m_x, event.m_y);
     GetCanvasLLPix( &g_ovp, mp, &m_cursor_lat, &m_cursor_lon);
 
-    
-    if( event.LeftDown() ) {
-    
+    //  On button push, find any bearing line selecteable, and other useful data
+    if( event.RightDown() || event.LeftDown()) {
         m_sel_brg = NULL;
-
+        
         m_pFind = m_select->FindSelection( m_cursor_lat, m_cursor_lon, SELTYPE_POINT_GENERIC );
-
+        
         if(m_pFind){
             for(unsigned int i=0 ; i < m_brg_array.GetCount() ; i++){
                 brg_line *pb = m_brg_array.Item(i);
-            
+                
                 if(m_pFind->m_pData1 == pb){
                     m_sel_brg = pb;
                     m_sel_part = m_pFind->GetUserData();
@@ -362,6 +400,35 @@ bool epl_pi::MouseEventHook( wxMouseEvent &event )
             }
         }
     }
+    
+        
+
+    if( event.RightDown() ) {
+        
+        if( m_sel_brg ){
+        
+            wxMenu* contextMenu = new wxMenu;
+        
+            wxMenuItem *item = new wxMenuItem(contextMenu, ID_EPL_DELETE, _("Delete Bearing") );
+            contextMenu->Append(item);
+  
+            GetOCPNCanvasWindow()->Connect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
+                                            wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+            
+            //   Invoke the drop-down menu
+            GetOCPNCanvasWindow()->PopupMenu( contextMenu, m_mouse_x, m_mouse_y );
+            
+            GetOCPNCanvasWindow()->Disconnect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
+                                            wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+            
+            bret = true;                // I have eaten this event
+        }
+        
+    }
+        
+    else if( event.LeftDown() ) {
+    }
+
     else if(event.Dragging()){
         if(m_sel_brg){
             if( (SEL_POINT_A == m_sel_part) || (SEL_POINT_B == m_sel_part)){
@@ -469,7 +536,10 @@ bool epl_pi::MouseEventHook( wxMouseEvent &event )
 
 void epl_pi::ProcessTimerEvent( wxTimerEvent& event )
 {
-    OnRolloverPopupTimerEvent( event );
+    if(event.GetId() == ROLLOVER_TIMER)
+        OnRolloverPopupTimerEvent( event );
+    else if(event.GetId() == HEAD_DOG_TIMER)    // no hdt source available
+        m_head_active = false;
 }
 
 
@@ -689,87 +759,36 @@ void epl_pi::SetNMEASentence( wxString &sentence )
             }
         }
 
-        else if( m_NMEA0183.LastSentenceIDReceived == _T("GLL") ) {
-            if( m_NMEA0183.Parse() ) {
-                if( m_NMEA0183.Gll.IsDataValid == NTrue ) {
-                    if( mPriPosition >= 2 ) {
-                        mPriPosition = 2;
-                        double lat, lon;
-                        float llt = m_NMEA0183.Gll.Position.Latitude.Latitude;
-                        int lat_deg_int = (int) ( llt / 100 );
-                        float lat_deg = lat_deg_int;
-                        float lat_min = llt - ( lat_deg * 100 );
-                        lat = lat_deg + ( lat_min / 60. );
-                        if( m_NMEA0183.Gll.Position.Latitude.Northing == South )
-                            lat = -lat;
-                        m_ownship_lat = lat;
-
-                        float lln = m_NMEA0183.Gll.Position.Longitude.Longitude;
-                        int lon_deg_int = (int) ( lln / 100 );
-                        float lon_deg = lon_deg_int;
-                        float lon_min = lln - ( lon_deg * 100 );
-                        lon = lon_deg + ( lon_min / 60. );
-                        if( m_NMEA0183.Gll.Position.Longitude.Easting == West )
-                            lon = -lon;
-                        m_ownship_lon = lon;
-                    }
-
-                    if( mPriDateTime >= 5 ) {
-                        mPriDateTime = 5;
-                        mUTCDateTime.ParseFormat( m_NMEA0183.Gll.UTCTime.c_str(), _T("%H%M%S") );
-                    }
-                }
-            }
-        }
 
         else if( m_NMEA0183.LastSentenceIDReceived == _T("HDG") ) {
             if( m_NMEA0183.Parse() ) {
-                if( mPriVar >= 2 ) {
+                
                     if( !wxIsNaN( m_NMEA0183.Hdg.MagneticVariationDegrees ) ){
-//                        mPriVar = 2;
-//                        if( m_NMEA0183.Hdg.MagneticVariationDirection == East )
-//                            mVar =  m_NMEA0183.Hdg.MagneticVariationDegrees;
-//                        else if( m_NMEA0183.Hdg.MagneticVariationDirection == West )
-//                            mVar = -m_NMEA0183.Hdg.MagneticVariationDegrees;
-//                        SendSentenceToAllInstruments( OCPN_DBP_STC_HMV, mVar, _T("\u00B0") );
+                        if( m_NMEA0183.Hdg.MagneticVariationDirection == East )
+                            mVar =  m_NMEA0183.Hdg.MagneticVariationDegrees;
+                        else if( m_NMEA0183.Hdg.MagneticVariationDirection == West )
+                            mVar = -m_NMEA0183.Hdg.MagneticVariationDegrees;
                     }
 
-                }
-                if( mPriHeadingM >= 1 ) {
-                    mPriHeadingM = 1;
-                    mHdm = m_NMEA0183.Hdg.MagneticSensorHeadingDegrees;
-//                    SendSentenceToAllInstruments( OCPN_DBP_STC_HDM, mHdm, _T("\u00B0") );
-                }
-//                if( !wxIsNaN(m_NMEA0183.Hdg.MagneticSensorHeadingDegrees) )
-//                       mHDx_Watchdog = gps_watchdog_timeout_ticks;
-
-                //      If Variation is available, no higher priority HDT is available,
-                //      then calculate and propagate calculated HDT
-//                if( !wxIsNaN(m_NMEA0183.Hdg.MagneticSensorHeadingDegrees) ) {
-//                    if( !wxIsNaN( mVar )  && (mPriHeadingT > 3) ){
-//                        mPriHeadingT = 4;
-//                        SendSentenceToAllInstruments(OCPN_DBP_STC_HDT, mHdm + mVar, _T("\u00B0"));
-//                        mHDT_Watchdog = gps_watchdog_timeout_ticks;
-//                    }
-//                }
+                    if( !wxIsNaN(m_NMEA0183.Hdg.MagneticSensorHeadingDegrees) ) {
+                        if( !wxIsNaN( mVar ) ){
+                            m_hdt = m_NMEA0183.Hdg.MagneticSensorHeadingDegrees + mVar;
+                            m_head_active = true;
+                            m_head_dog_timer.Start(5000, wxTIMER_ONE_SHOT);
+                        }
+                    }
+                    
             }
         }
 
         else if( m_NMEA0183.LastSentenceIDReceived == _T("HDM") ) {
             if( m_NMEA0183.Parse() ) {
-                if( mPriHeadingM >= 2 ) {
-                    mPriHeadingM = 2;
-                    mHdm = m_NMEA0183.Hdm.DegreesMagnetic;
-                }
-//                if( !wxIsNaN(m_NMEA0183.Hdm.DegreesMagnetic) )
-//                    mHDx_Watchdog = gps_watchdog_timeout_ticks;
 
-                //      If Variation is available, no higher priority HDT is available,
-                //      then calculate and propagate calculated HDT
                 if( !wxIsNaN(m_NMEA0183.Hdm.DegreesMagnetic) ) {
-                    if( !wxIsNaN( mVar )  && (mPriHeadingT > 2) ){
-                        mPriHeadingT = 3;
+                    if( !wxIsNaN( mVar ) ){
                         m_hdt = m_NMEA0183.Hdm.DegreesMagnetic + mVar;
+                        m_head_active = true;
+                        m_head_dog_timer.Start(5000, wxTIMER_ONE_SHOT);
                     }
                 }
 
@@ -782,59 +801,14 @@ void epl_pi::SetNMEASentence( wxString &sentence )
                     mPriHeadingT = 1;
                     if( m_NMEA0183.Hdt.DegreesTrue < 999. ) {
                         m_hdt = m_NMEA0183.Hdt.DegreesTrue;
+                        m_head_active = true;
+                        m_head_dog_timer.Start(5000, wxTIMER_ONE_SHOT);
                     }
                 }
             }
         }
 
-        else if( m_NMEA0183.LastSentenceIDReceived == _T("RMC") ) {
-            if( m_NMEA0183.Parse() ) {
-                if( m_NMEA0183.Rmc.IsDataValid == NTrue ) {
-                    if( mPriPosition >= 4 ) {
-                        mPriPosition = 4;
-                        double lat, lon;
-                        float llt = m_NMEA0183.Rmc.Position.Latitude.Latitude;
-                        int lat_deg_int = (int) ( llt / 100 );
-                        float lat_deg = lat_deg_int;
-                        float lat_min = llt - ( lat_deg * 100 );
-                        lat = lat_deg + ( lat_min / 60. );
-                        if( m_NMEA0183.Rmc.Position.Latitude.Northing == South )
-                            lat = -lat;
-                        m_ownship_lat = lat;
-                        
-                        float lln = m_NMEA0183.Rmc.Position.Longitude.Longitude;
-                        int lon_deg_int = (int) ( lln / 100 );
-                        float lon_deg = lon_deg_int;
-                        float lon_min = lln - ( lon_deg * 100 );
-                        lon = lon_deg + ( lon_min / 60. );
-                        if( m_NMEA0183.Rmc.Position.Longitude.Easting == West )
-                            lon = -lon;
-                        m_ownship_lon = lon;
-                    }    
-
-
-                    if( mPriVar >= 3 ) {
-                        if( !wxIsNaN( m_NMEA0183.Rmc.MagneticVariation ) ){
-                            mPriVar = 3;
-                            if( m_NMEA0183.Rmc.MagneticVariationDirection == East )
-                                mVar = m_NMEA0183.Rmc.MagneticVariation;
-                            else if( m_NMEA0183.Rmc.MagneticVariationDirection == West )
-                                mVar = -m_NMEA0183.Rmc.MagneticVariation;
-//                            mVar_Watchdog = gps_watchdog_timeout_ticks;
-
-//                            SendSentenceToAllInstruments( OCPN_DBP_STC_HMV, mVar, _T("\u00B0") );
-                        }
-                    }
-
-                    if( mPriDateTime >= 3 ) {
-                        mPriDateTime = 3;
-                        wxString dt = m_NMEA0183.Rmc.Date + m_NMEA0183.Rmc.UTCTime;
-                        mUTCDateTime.ParseFormat( dt.c_str(), _T("%d%m%y%H%M%S") );
-                    }
-                }
-            }
-        }
-        
+         
 
     }
 }
@@ -844,6 +818,10 @@ void epl_pi::SetPositionFix( PlugIn_Position_Fix &pfix )
     if(1){
         m_ownship_lat = pfix.Lat;
         m_ownship_lon = pfix.Lon;
+        if(!wxIsNaN( pfix.Cog ))
+            m_ownship_cog = pfix.Cog;
+        if(!wxIsNaN( pfix.Var ))
+            mVar = pfix.Var;
     }
 }
 
@@ -908,10 +886,22 @@ void epl_pi::ProcessBrgCapture(double brg_rel, double brg_subtended, double brg_
     
     double lat = m_ownship_lat;          // initial declaration causes bearling line to pass thru ownship
     double lon = m_ownship_lon;
-    double length = 2.;                 //  Length initially set
+    
+    //  What initial length?
+    //  say 20% of canvas horizontal size, and max of 10 NMi
+    
+    double l1 = ((g_ovp.pix_width / g_ovp.view_scale_ppm) /1852.) * 0.2;
+    double length = wxMin(l1, 10.0);
+    
     
     // Process the normal case where the bearing is ship-head relative
-    brg_true = brg_rel + m_hdt;
+    
+    //  If we don't have a true heading available, use ownship cog
+    if(m_head_active)
+        brg_true = brg_rel + m_hdt;
+    else
+        brg_true = brg_rel + m_ownship_cog;
+    
     type = TRUE_BRG;
     
     //  Do not add duplicates
@@ -969,6 +959,15 @@ brg_line::brg_line(double bearing, BearingTypeEnum type, double lat_point, doubl
     m_lonA = lon_point;
     m_length = length;
 
+    // shift point a just a bit (20% of length), to help make a cocked hat
+    double adj_lata, adj_lona;
+    double dy = -0.2 * m_length * 1852.0 * cos(m_bearing_true * PI / 180.);        // east/north in metres
+    double dx = -0.2 * m_length * 1852.0 * sin(m_bearing_true * PI / 180.);
+    fromSM_Plugin(dx, dy, m_latA, m_lonA, &adj_lata, &adj_lona);
+
+    m_latA = adj_lata;
+    m_lonA = adj_lona;
+    
     CalcPointB();
 }
 
@@ -1078,8 +1077,8 @@ void brg_line::DrawInfoBox( void )
     
     double dx = 0;
     double dy = 0;
-    double lx = 0;
-    double ly = 0;
+//    double lx = 0;
+//    double ly = 0;
     
     //  Position of info box depends on orientation of the bearing line.
     if((m_bearing_true >0 ) && (m_bearing_true < 90)){
@@ -1087,8 +1086,8 @@ void brg_line::DrawInfoBox( void )
         angle = angle * PI / 180.;
         dx = distance * cos(angle);
         dy = -distance * sin(angle);
-        lx = 0;
-        ly = 0;
+//        lx = 0;
+//        ly = 0;
     }
   
     else if((m_bearing_true > 90 ) && (m_bearing_true < 180)){
@@ -1096,8 +1095,8 @@ void brg_line::DrawInfoBox( void )
       angle = angle * PI / 180.;
       dx = (distance * sin(angle));
       dy = -distance * cos(angle);
-      lx = 0;
-      ly = 0;
+//      lx = 0;
+//      ly = 0;
     }
   
   else if((m_bearing_true > 180 ) && (m_bearing_true < 270)){
@@ -1105,8 +1104,8 @@ void brg_line::DrawInfoBox( void )
       angle = angle * PI / 180.;
       dx = -(distance * sin(angle)) - box_width;
       dy = distance * cos(angle);
-      lx = box_width;
-      ly = 0;
+//      lx = box_width;
+//      ly = 0;
   }
 
   else if((m_bearing_true > 270 ) && (m_bearing_true < 360)){
@@ -1114,8 +1113,8 @@ void brg_line::DrawInfoBox( void )
       angle = angle * PI / 180.;
       dx = (distance * sin(angle)) - box_width;
       dy = (-distance * cos(angle));
-      lx = box_width;
-      ly = 0;
+//      lx = box_width;
+//      ly = 0;
   }
   
     int box_xp = xp + dx;
@@ -1203,12 +1202,20 @@ void brg_line::DrawInfoAligned( void )
     int ctr_x = -(sx/2) * sin(angle);
     int ctr_y = (sx/2) * cos(angle);
     
-    int xp, yp;
-    xp = ctr_x + off_x + (ab.x + cd.x)/2;
-    yp = ctr_y + off_y + (ab.y + cd.y)/2;
+    if(m_bearing_true < 180.){
+        int xp, yp;
+        xp = ctr_x + off_x + (ab.x + cd.x)/2;
+        yp = ctr_y + off_y + (ab.y + cd.y)/2;
 
-    RenderText( g_pdc, g_gdc, info, m_Font, m_color_text, xp, yp, 90. - m_bearing_true);
-
+        RenderText( g_pdc, g_gdc, info, m_Font, m_color_text, xp, yp, 90. - m_bearing_true);
+    }
+    else{
+        int xp, yp;
+        xp = -ctr_x - off_x + (ab.x + cd.x)/2;
+        yp = -ctr_y - off_y + (ab.y + cd.y)/2;
+        
+        RenderText( g_pdc, g_gdc, info, m_Font, m_color_text, xp, yp, 90. - m_bearing_true + 180.);
+    }
 }
 
 void brg_line::Draw( void )
@@ -1220,8 +1227,14 @@ void brg_line::Draw( void )
     wxPoint cd;
     GetCanvasPixLL(g_vp, &cd, m_latB, m_lonB);
     
-
-    RenderLine(g_pdc, g_gdc, ab.x, ab.y, cd.x, cd.y, m_color, m_width);
+    //  Adjust the rendering width, to make it 100 metres wide
+    double dwidth = 100 * g_ovp.view_scale_ppm;
+    
+    dwidth = wxMin(4, dwidth);
+    dwidth = wxMax(2, dwidth);
+    
+//    printf("%g\n", dwidth);
+    RenderLine(g_pdc, g_gdc, ab.x, ab.y, cd.x, cd.y, m_color, dwidth);
 
 }
 
@@ -1231,6 +1244,8 @@ void brg_line::Draw( void )
 //      Event Handler implementation
 BEGIN_EVENT_TABLE ( PI_EventHandler, wxEvtHandler )
 EVT_TIMER ( ROLLOVER_TIMER, PI_EventHandler::OnTimerEvent )
+EVT_TIMER ( HEAD_DOG_TIMER, PI_EventHandler::OnTimerEvent )
+
 END_EVENT_TABLE()
 
 
@@ -1250,3 +1265,7 @@ void PI_EventHandler::OnTimerEvent(wxTimerEvent& event)
     m_parent->ProcessTimerEvent( event );
 }
 
+void PI_EventHandler::PopupMenuHandler(wxCommandEvent& event )
+{
+    m_parent->PopupMenuHandler( event );
+}

@@ -28,6 +28,7 @@
 #include <wx/timer.h>
 
 #define ROLLOVER_TIMER 5000
+#define HEAD_DOG_TIMER 5001
 
 class RolloverWin: public wxWindow
 {
