@@ -21,6 +21,9 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
  ***************************************************************************
  */
+#ifndef _VECTOR2D_H_
+#define _VECTOR2D_H_
+
 class vector2D
 {
 public:
@@ -44,3 +47,14 @@ extern "C" pVector2D vAddVectors(pVector2D v0, pVector2D v1, pVector2D v);
 extern "C" pVector2D vSubtractVectors(pVector2D v0, pVector2D v1, pVector2D v);
 extern "C" double vVectorMagnitude(pVector2D v0);
 extern "C" double vVectorSquared(pVector2D v0);
+
+typedef struct  {
+    double y;
+    double x;
+} MyFlPoint;
+
+extern "C" bool Intersect(MyFlPoint p1, MyFlPoint p2, MyFlPoint p3, MyFlPoint p4);
+extern "C" bool LineIntersect(MyFlPoint p1, MyFlPoint p2, MyFlPoint p3, MyFlPoint p4, double *int_x, double *int_y);
+extern "C" bool G_FloatPtInPolygon(MyFlPoint *rgpts, int wnumpts, float x, float y);
+
+#endif

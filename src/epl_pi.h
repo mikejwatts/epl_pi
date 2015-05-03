@@ -55,6 +55,7 @@
 #include "nmea0183/nmea0183.h"
 #include "PI_RolloverWin.h"
 #include "TexFont.h"
+#include "vector2d.h"
 
 
 #define EPL_TOOL_POSITION -1          // Request default positioning of toolbar tool
@@ -72,6 +73,7 @@
 
 //      Menu items
 #define ID_EPL_DELETE           8867
+#define ID_EPL_XMIT             8868
 
 //----------------------------------------------------------------------------------------------------------
 //    Forward declarations
@@ -82,6 +84,7 @@ class SelectItem;
 class PI_EventHandler;
 
 WX_DECLARE_OBJARRAY(brg_line *, ArrayOfBrgLines);
+WX_DECLARE_OBJARRAY(vector2D *, ArrayOf2DPoints);
 
 //void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
 //                    unsigned char transparency );
@@ -136,6 +139,7 @@ public:
       void SetPluginMessage(wxString &message_id, wxString &message_body);
 
       void ProcessTimerEvent( wxTimerEvent& event );
+      void RenderFixHat( void );
       
 private:
       bool LoadConfig(void);
@@ -143,6 +147,8 @@ private:
 
       void ProcessBrgCapture(double brg_rel, double brg_subtended, double brg_TM, int brg_TM_flag,
                                 wxString Ident, wxString target);
+
+      int CalculateFix( void );
       
       wxBitmap         *m_pplugin_icon;
       wxFileConfig     *m_pconfig;
@@ -159,7 +165,12 @@ private:
       Select               *m_select;
       
       ArrayOfBrgLines      m_brg_array;
- 
+      double               m_fix_lat;
+      double               m_fix_lon;
+      ArrayOf2DPoints      m_hat_array;
+      int                  m_nfix;
+      bool                 m_bshow_fix_hat;
+      
       //        Selection variables
       brg_line             *m_sel_brg;
       int                  m_sel_part;
@@ -203,6 +214,7 @@ private:
       wxTimer               m_RolloverPopupTimer;
       int                   m_rollover_popup_timer_msec;
       
+      wxColour              m_FixHatColor;
 
       PI_EventHandler       *m_event_handler;
       
@@ -265,6 +277,9 @@ public:
     void Draw( void );
     void DrawInfoBox( void );
     void DrawInfoAligned( void );
+
+    bool getIntersect(brg_line *b, double *lat, double *lon);
+        
     
     double      m_latA;
     double      m_lonA;

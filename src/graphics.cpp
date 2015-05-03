@@ -281,6 +281,21 @@ void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radiu
     }
 }
 
+
+void AlphaBlendingPoly( wxDC *pdc, int n, wxPoint points[], wxColour color, unsigned char transparency )
+{
+    if( pdc ) {
+        wxColour c(color.Red(), color.Green(), color.Blue(), transparency);
+        pdc->SetBrush(wxBrush(c));
+        pdc->SetPen(wxPen(c));
+        
+        pdc->DrawPolygon(n, points);
+    }
+}
+
+
+
+
 void RenderGLText( TexFont *ptf, wxString &msg, wxFont *font, int xp, int yp, double angle)
 {
     if(ptf){

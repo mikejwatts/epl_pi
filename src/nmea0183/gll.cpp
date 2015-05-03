@@ -62,6 +62,7 @@ void GLL::Empty( void )
    Position.Empty();
    UTCTime.Empty();
    IsDataValid = Unknown0183;
+   Mode.Empty();
 }
 
 bool GLL::Parse( const SENTENCE& sentence )
@@ -82,6 +83,17 @@ bool GLL::Parse( const SENTENCE& sentence )
    ** $--GLL,llll.ll,a,yyyyy.yy,a,hhmmss.ss,A*hh<CR><LF>
    */
 
+   /*
+   The last version 2 iteration of the NMEA standard was 2.3.
+   It added a mode indicator to several sentences which is used to indicate the kind of fix the receiver currently has.
+   This indication is part of the signal integrity information needed by the FAA.
+   The value can be A=autonomous, D=differential, E=Estimated, N=not valid, S=Simulator.
+   Sometimes there can be a null value as well.
+   Only the A and D values will correspond to an Active and reliable Sentence.
+   This mode character has been added to the RMC, RMB, VTG, and GLL,
+   sentences and optionally some others including the BWC and XTE sentences.
+   */
+   
    /*
    ** First we check the checksum...
    */
@@ -176,6 +188,8 @@ bool GLL::Write( SENTENCE& sentence )
    sentence += Position;
    sentence += UTCTime;
    sentence += IsDataValid;
+   if(!Mode.IsEmpty())
+       sentence += Mode;
 
    sentence.Finish();
 
@@ -189,6 +203,7 @@ const GLL& GLL::operator = ( const GLL& source )
    Position    = source.Position;
    UTCTime     = source.UTCTime;
    IsDataValid = source.IsDataValid;
-
+   Mode        = source.Mode;
+   
    return( *this );
 }

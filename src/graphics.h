@@ -35,6 +35,8 @@
 
 void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
                     unsigned char transparency );
+void AlphaBlendingPoly( wxDC *pdc, int n, wxPoint points[], wxColour color, unsigned char transparency );
+
 void RenderLine(wxDC *dc, void *pgc, int x1, int y1, int x2, int y2, wxColour color, int width);
 void RenderText( wxDC *dc, void *pgc, wxString &msg, wxFont *font, wxColour &color, int xp, int yp, double angle);
 

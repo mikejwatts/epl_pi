@@ -31,7 +31,7 @@
 #include "epl_pi.h"
 #include "icons.h"
 #include "Select.h"
-
+#include "vector2d.h"
 
 #if !defined(NAN)
 static const long long lNaN = 0xfff8000000000000;
@@ -54,6 +54,7 @@ wxDC                    *g_pdc;
 
 #include <wx/arrimpl.cpp> // this is a magic incantation which must be done!
 WX_DEFINE_OBJARRAY(ArrayOfBrgLines);
+WX_DEFINE_OBJARRAY(ArrayOf2DPoints);
 
 #include "default_pi.xpm"
 
@@ -180,7 +181,10 @@ int epl_pi::Init( void )
     mVar = 0;
     m_hdt = 0;
     m_ownship_cog = 0;
+    m_nfix = 0;
+    m_bshow_fix_hat = false;
     
+    m_FixHatColor = wxColour(0, 128, 128);
     
 
     //    Get a pointer to the opencpn configuration object
@@ -328,6 +332,42 @@ void epl_pi::PopupMenuHandler( wxCommandEvent& event )
             
             handled = true;
             break;
+            
+        case ID_EPL_XMIT:
+        {
+            
+            m_NMEA0183.TalkerID = _T("EC");
+            
+            SENTENCE snt;
+             
+            if( m_fix_lat < 0. )
+                m_NMEA0183.Gll.Position.Latitude.Set( -m_fix_lat, _T("S") );
+            else
+                m_NMEA0183.Gll.Position.Latitude.Set( m_fix_lat, _T("N") );
+            
+            if( m_fix_lon < 0. )
+                m_NMEA0183.Gll.Position.Longitude.Set( -m_fix_lon, _T("W") );
+            else
+                m_NMEA0183.Gll.Position.Longitude.Set( m_fix_lon, _T("E") );
+            
+            wxDateTime now = wxDateTime::Now();
+            wxDateTime utc = now.ToUTC();
+            wxString time = utc.Format( _T("%H%M%S") );
+            m_NMEA0183.Gll.UTCTime = time;
+
+            m_NMEA0183.Gll.Mode = _T("M");              // Use GLL 2.3 specification
+                                                        // and send "M" for "Manual fix"
+            m_NMEA0183.Gll.IsDataValid = NFalse;        // Spec requires "Invalid" for manual fix
+             
+            m_NMEA0183.Gll.Write( snt );
+
+            wxLogMessage(snt.Sentence);
+            PushNMEABuffer( snt.Sentence );
+            
+            handled = true;
+            break;
+        }
+        
         default:
             break;
     }
@@ -405,21 +445,39 @@ bool epl_pi::MouseEventHook( wxMouseEvent &event )
 
     if( event.RightDown() ) {
         
-        if( m_sel_brg ){
+        if( m_sel_brg || m_bshow_fix_hat){
         
             wxMenu* contextMenu = new wxMenu;
         
-            wxMenuItem *item = new wxMenuItem(contextMenu, ID_EPL_DELETE, _("Delete Bearing") );
-            contextMenu->Append(item);
+            wxMenuItem *brg_item = 0;
+            wxMenuItem *fix_item = 0;
+            
+            if(m_sel_brg){
+                brg_item = new wxMenuItem(contextMenu, ID_EPL_DELETE, _("Delete Bearing") );
+                contextMenu->Append(brg_item);
+                GetOCPNCanvasWindow()->Connect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
+                                                wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+            }
   
-            GetOCPNCanvasWindow()->Connect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
+            if(m_bshow_fix_hat){
+                wxMenuItem *fix_item = new wxMenuItem(contextMenu, ID_EPL_XMIT, _("Send sighted fix to device") );
+                contextMenu->Append(fix_item);
+                GetOCPNCanvasWindow()->Connect( ID_EPL_XMIT, wxEVT_COMMAND_MENU_SELECTED,
                                             wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+            }
             
             //   Invoke the drop-down menu
             GetOCPNCanvasWindow()->PopupMenu( contextMenu, m_mouse_x, m_mouse_y );
             
-            GetOCPNCanvasWindow()->Disconnect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
+            if(brg_item){
+                GetOCPNCanvasWindow()->Disconnect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
                                             wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+            }
+            
+            if(fix_item){
+                GetOCPNCanvasWindow()->Connect( ID_EPL_XMIT, wxEVT_COMMAND_MENU_SELECTED,
+                                            wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+            }
             
             bret = true;                // I have eaten this event
         }
@@ -528,6 +586,9 @@ bool epl_pi::MouseEventHook( wxMouseEvent &event )
         
         m_pFind = NULL;
         m_sel_brg = NULL;
+        
+        m_nfix = CalculateFix();
+        
     }
 
     return bret;
@@ -645,17 +706,44 @@ void epl_pi::OnRolloverPopupTimerEvent( wxTimerEvent& event )
     
     
         
-        if( m_pBrgRolloverWin && m_pBrgRolloverWin->IsActive() && !showRollover ) {
-            m_pBrgRolloverWin->IsActive( false );
-            m_pRolloverBrg = NULL;
-            m_pBrgRolloverWin->Destroy();
-            m_pBrgRolloverWin = NULL;
-            b_need_refresh = true;
-        } else if( m_pBrgRolloverWin && showRollover ) {
-            m_pBrgRolloverWin->IsActive( true );
-            b_need_refresh = true;
+    if( m_pBrgRolloverWin && m_pBrgRolloverWin->IsActive() && !showRollover ) {
+        m_pBrgRolloverWin->IsActive( false );
+        m_pRolloverBrg = NULL;
+        m_pBrgRolloverWin->Destroy();
+        m_pBrgRolloverWin = NULL;
+        b_need_refresh = true;
+    } else if( m_pBrgRolloverWin && showRollover ) {
+        m_pBrgRolloverWin->IsActive( true );
+        b_need_refresh = true;
+    }
+
+    //  Check to see if we are in the cocked hat fix region...
+    
+    if(m_nfix > 2){
+        MyFlPoint hat_array[10];            // enough
+    
+        for(unsigned int i=0 ; i < m_hat_array.GetCount() ; i++){
+            vector2D *pt = m_hat_array.Item(i);
+        
+            hat_array[i].y = pt->lat;
+            hat_array[i].x = pt->lon;
+        }
+    
+        if( G_FloatPtInPolygon(hat_array, m_hat_array.GetCount(), m_cursor_lon, m_cursor_lat) ){
+            if(!m_bshow_fix_hat)
+                b_need_refresh = true;
+                
+            m_bshow_fix_hat = true;
+        }
+        else{
+            if(m_bshow_fix_hat)
+                b_need_refresh = true;
+            
+            m_bshow_fix_hat = false;
         }
         
+    }
+    
     if( b_need_refresh )
         GetOCPNCanvasWindow()->Refresh(true);
         
@@ -692,6 +780,8 @@ bool epl_pi::RenderOverlay(wxDC &dc, PlugIn_ViewPort *vp)
         pb->DrawInfoAligned();
     }
     
+    if(m_bshow_fix_hat)
+        RenderFixHat(  );
     
         
 #if wxUSE_GRAPHICS_CONTEXT
@@ -703,6 +793,7 @@ bool epl_pi::RenderOverlay(wxDC &dc, PlugIn_ViewPort *vp)
                        m_pBrgRolloverWin->GetPosition().x,
                        m_pBrgRolloverWin->GetPosition().y, false );
     }
+
     
     return true;
 }
@@ -725,6 +816,9 @@ bool epl_pi::RenderGLOverlay(wxGLContext *pcontext, PlugIn_ViewPort *vp)
         pb->Draw();
         pb->DrawInfoAligned();
     }
+    
+    if(m_bshow_fix_hat)
+        RenderFixHat();
     
     if( m_pBrgRolloverWin && m_pBrgRolloverWin->IsActive() ) {
         wxImage image = m_pBrgRolloverWin->GetBitmap()->ConvertToImage();
@@ -927,6 +1021,100 @@ void epl_pi::ProcessBrgCapture(double brg_rel, double brg_subtended, double brg_
         GetOCPNCanvasWindow()->Refresh();
         
     }
+    
+    m_nfix = CalculateFix();
+}
+
+
+int epl_pi::CalculateFix( void )
+{
+    //  If there are two or more bearing lines stored, calculate the resulting fix
+    //  Also, keep an array of points defining the fix for later rendering
+ 
+    m_hat_array.Clear();
+    
+    if(m_brg_array.GetCount() < 2)
+        return 0;
+    
+    double lat_acc = 0.;
+    double lon_acc = 0.;
+    int n_intersect = 0;
+    for(size_t i=0 ; i < m_brg_array.GetCount()-1 ; i++){
+        brg_line *a = m_brg_array.Item(i);
+        brg_line *b = m_brg_array.Item(i+1);
+        
+        double lat, lon;
+        if(a->getIntersect(b, &lat, &lon)){
+            lat_acc += lat;
+            lon_acc += lon;
+            n_intersect ++;
+            
+            vector2D *pt = new vector2D(lon, lat);
+            m_hat_array.Add(pt);
+        }
+    }
+
+    if(m_brg_array.GetCount() > 2){
+        brg_line *a = m_brg_array.Item(0);
+        brg_line *b = m_brg_array.Item(m_brg_array.GetCount()-1);
+        
+        double lat, lon;
+        if(a->getIntersect(b, &lat, &lon)){
+            lat_acc += lat;
+            lon_acc += lon;
+            n_intersect ++;
+            
+            vector2D *pt = new vector2D(lon, lat);
+            m_hat_array.Add(pt);
+        }
+        
+    }
+    
+    //  Have at least one intersection,
+    //  so calculate the fix as the average of all intersections
+    if(n_intersect){
+        m_fix_lat = lat_acc / n_intersect;
+        m_fix_lon = lon_acc / n_intersect;
+    }
+    
+    return (n_intersect);    
+    
+}
+
+
+void epl_pi::RenderFixHat( void )
+{
+    if(!m_nfix)
+        return;                 // no fix
+   
+    if(m_nfix == 1){            // two line fix
+
+        if(m_hat_array.GetCount() == 1){
+            vector2D *pt = m_hat_array.Item(0);
+            wxPoint ab;
+            GetCanvasPixLL(g_vp, &ab, pt->lat, pt->lon);
+ 
+            int crad = 10;
+            AlphaBlending( g_pdc, ab.x - crad, ab.y - crad, crad*2, crad *2, 3.0, m_FixHatColor, 250 );
+        }
+    }
+    else if(m_nfix > 2){
+        
+        //      Get an array of wxPoints
+//        printf("\n");
+        wxPoint *pta = new wxPoint[m_nfix];
+        for(unsigned int i=0 ; i < m_hat_array.GetCount() ; i++){
+            vector2D *pt = m_hat_array.Item(i);
+            wxPoint ab;
+            GetCanvasPixLL(g_vp, &ab, pt->lat, pt->lon);
+//            printf("%g %g %d %d\n", pt->lat, pt->lon, ab.x, ab.y);
+            pta[i] = ab;
+        }
+
+        AlphaBlendingPoly( g_pdc, m_hat_array.GetCount(), pta, m_FixHatColor, 250 );
+        
+    }
+ 
 }
 
 
@@ -996,6 +1184,29 @@ void brg_line::Init(void)
     m_InfoBoxColor = wxTheColourDatabase->Find(_T("LIME GREEN"));
     
 }
+
+bool brg_line::getIntersect(brg_line* b, double* lat, double* lon)
+{
+    double ilat, ilon;
+    
+    MyFlPoint p1; p1.x = this->m_lonA; p1.y = this->m_latA;
+    MyFlPoint p2; p2.x = this->m_lonB; p2.y = this->m_latB;
+    MyFlPoint p3; p3.x = b->m_lonA; p3.y = b->m_latA;
+    MyFlPoint p4; p4.x = b->m_lonB; p4.y = b->m_latB;
+    
+  
+    bool ret = LineIntersect( p1, p2, p3, p4, &ilon, &ilat);
+    
+    if(lat)
+        *lat = ilat;
+    if(lon)
+        *lon = ilon;
+    
+    return ret;
+
+}
+
+
 
 void brg_line::CalcPointB(void)
 {
