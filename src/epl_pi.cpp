@@ -452,7 +452,7 @@ bool epl_pi::MouseEventHook( wxMouseEvent &event )
             wxMenuItem *brg_item = 0;
             wxMenuItem *fix_item = 0;
             
-            if(m_sel_brg){
+            if(!m_bshow_fix_hat && m_sel_brg){
                 brg_item = new wxMenuItem(contextMenu, ID_EPL_DELETE, _("Delete Bearing") );
                 contextMenu->Append(brg_item);
                 GetOCPNCanvasWindow()->Connect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
@@ -609,8 +609,36 @@ void epl_pi::OnRolloverPopupTimerEvent( wxTimerEvent& event )
     bool b_need_refresh = false;
     
     bool showRollover = false;
+
+    //  Check to see if we are in the cocked hat fix region...
     
-    if( NULL == m_pRolloverBrg ) {
+    if(m_nfix > 2){
+        MyFlPoint hat_array[10];            // enough
+        
+        for(unsigned int i=0 ; i < m_hat_array.GetCount() ; i++){
+            vector2D *pt = m_hat_array.Item(i);
+            
+            hat_array[i].y = pt->lat;
+            hat_array[i].x = pt->lon;
+        }
+        
+        if( G_FloatPtInPolygon(hat_array, m_hat_array.GetCount(), m_cursor_lon, m_cursor_lat) ){
+            if(!m_bshow_fix_hat)
+                b_need_refresh = true;
+            
+            m_bshow_fix_hat = true;
+        }
+        else{
+            if(m_bshow_fix_hat)
+                b_need_refresh = true;
+            
+            m_bshow_fix_hat = false;
+        }
+        
+    }
+    
+    
+    if( !m_bshow_fix_hat && (NULL == m_pRolloverBrg) ) {
        
         m_pFind = m_select->FindSelection( m_cursor_lat, m_cursor_lon, SELTYPE_SEG_GENERIC );
         
@@ -717,33 +745,6 @@ void epl_pi::OnRolloverPopupTimerEvent( wxTimerEvent& event )
         b_need_refresh = true;
     }
 
-    //  Check to see if we are in the cocked hat fix region...
-    
-    if(m_nfix > 2){
-        MyFlPoint hat_array[10];            // enough
-    
-        for(unsigned int i=0 ; i < m_hat_array.GetCount() ; i++){
-            vector2D *pt = m_hat_array.Item(i);
-        
-            hat_array[i].y = pt->lat;
-            hat_array[i].x = pt->lon;
-        }
-    
-        if( G_FloatPtInPolygon(hat_array, m_hat_array.GetCount(), m_cursor_lon, m_cursor_lat) ){
-            if(!m_bshow_fix_hat)
-                b_need_refresh = true;
-                
-            m_bshow_fix_hat = true;
-        }
-        else{
-            if(m_bshow_fix_hat)
-                b_need_refresh = true;
-            
-            m_bshow_fix_hat = false;
-        }
-        
-    }
-    
     if( b_need_refresh )
         GetOCPNCanvasWindow()->Refresh(true);
         
