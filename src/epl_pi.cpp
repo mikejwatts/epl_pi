@@ -612,7 +612,7 @@ void epl_pi::OnRolloverPopupTimerEvent( wxTimerEvent& event )
 
     //  Check to see if we are in the cocked hat fix region...
     
-    if(m_nfix > 2){
+    if(m_nfix >= 2){
         MyFlPoint hat_array[10];            // enough
         
         for(unsigned int i=0 ; i < m_hat_array.GetCount() ; i++){
@@ -636,8 +636,35 @@ void epl_pi::OnRolloverPopupTimerEvent( wxTimerEvent& event )
         }
         
     }
-    
-    
+
+    if(m_nfix == 1){
+ 
+        vector2D *pt = m_hat_array.Item(0);
+        
+        wxPoint fpoint;
+        GetCanvasPixLL(&g_ovp, &fpoint, pt->lat,  pt->lon);
+        
+        wxPoint cpoint;
+        GetCanvasPixLL(&g_ovp, &cpoint, m_cursor_lat, m_cursor_lon);
+        
+        double dx2 = ( ((cpoint.x - fpoint.x) * (cpoint.x - fpoint.x)) +
+                            ((cpoint.y - fpoint.y) * (cpoint.y - fpoint.y)) );
+        
+        if(dx2 < 20 * 20){
+            if(!m_bshow_fix_hat)
+                b_need_refresh = true;
+            
+            m_bshow_fix_hat = true;
+        }
+        else{
+            if(m_bshow_fix_hat)
+                b_need_refresh = true;
+            
+            m_bshow_fix_hat = false;
+        }
+    }
+        
+        
     if( !m_bshow_fix_hat && (NULL == m_pRolloverBrg) ) {
        
         m_pFind = m_select->FindSelection( m_cursor_lat, m_cursor_lon, SELTYPE_SEG_GENERIC );
@@ -1095,7 +1122,7 @@ void epl_pi::RenderFixHat( void )
             wxPoint ab;
             GetCanvasPixLL(g_vp, &ab, pt->lat, pt->lon);
  
-            int crad = 10;
+            int crad = 20;
             AlphaBlending( g_pdc, ab.x - crad, ab.y - crad, crad*2, crad *2, 3.0, m_FixHatColor, 250 );
         }
     }
