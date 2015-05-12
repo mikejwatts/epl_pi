@@ -613,7 +613,7 @@ void epl_pi::OnRolloverPopupTimerEvent( wxTimerEvent& event )
     //  Check to see if we are in the cocked hat fix region...
     
     if(m_nfix >= 2){
-        MyFlPoint hat_array[10];            // enough
+        MyFlPoint hat_array[100];            // enough
         
         for(unsigned int i=0 ; i < m_hat_array.GetCount() ; i++){
             vector2D *pt = m_hat_array.Item(i);
