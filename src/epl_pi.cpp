@@ -613,7 +613,7 @@ void epl_pi::OnRolloverPopupTimerEvent( wxTimerEvent& event )
     //  Check to see if we are in the cocked hat fix region...
     
     if(m_nfix >= 2){
-        MyFlPoint hat_array[100];            // enough
+        MyFlPoint hat_array[100];            // enough			** TODO - deal with any number of bearing lines
         
         for(unsigned int i=0 ; i < m_hat_array.GetCount() ; i++){
             vector2D *pt = m_hat_array.Item(i);
@@ -1015,15 +1015,22 @@ void epl_pi::ProcessBrgCapture(double brg_rel, double brg_subtended, double brg_
     double l1 = ((g_ovp.pix_width / g_ovp.view_scale_ppm) /1852.) * 0.2;
     double length = wxMin(l1, 10.0);
     
-    
-    // Process the normal case where the bearing is ship-head relative
-    
-    //  If we don't have a true heading available, use ownship cog
-    if(m_head_active)
-        brg_true = brg_rel + m_hdt;
-    else
-        brg_true = brg_rel + m_ownship_cog;
-    
+    // normal case is for absolute bearing but if the bearing is relative,
+	// the ship's heading needs to be applied
+	// ** TODO should check the TM_flag is valid too ( what to do if not... )
+	if ( !wxIsNaN(brg_TM) ) {
+		// ** TODO change the type [enum] var(?) and apply variation if brg_TM_flag indicates magnetic
+		brg_true = brg_TM;
+	
+	} else {
+		//  If we don't have a true heading available, use ownship cog
+		if(m_head_active)
+			brg_true = brg_rel + m_hdt;
+		else
+			// ** TODO TBD - if no reliable heading then (a) pop up an error message? and (b) don't plot anything
+			brg_true = brg_rel + m_ownship_cog;
+	}
+
     type = TRUE_BRG;
     
     //  Do not add duplicates
