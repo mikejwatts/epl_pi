@@ -72,8 +72,9 @@
 #define SEL_SEG         2
 
 //      Menu items
-#define ID_EPL_DELETE           8867
-#define ID_EPL_XMIT             8868
+#define ID_EPL_DELETE_SGL       8867
+#define ID_EPL_DELETE_ALL		    8868
+#define ID_EPL_XMIT             8869
 
 //----------------------------------------------------------------------------------------------------------
 //    Forward declarations
