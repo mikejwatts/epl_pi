@@ -35,7 +35,7 @@
 #endif //precompiled headers
 
 #define     PLUGIN_VERSION_MAJOR    0
-#define     PLUGIN_VERSION_MINOR    2
+#define     PLUGIN_VERSION_MINOR    3
 
 #define     MY_API_VERSION_MAJOR    1
 #define     MY_API_VERSION_MINOR    12
@@ -72,8 +72,9 @@
 #define SEL_SEG         2
 
 //      Menu items
-#define ID_EPL_DELETE           8867
-#define ID_EPL_XMIT             8868
+#define ID_EPL_DELETE_SGL       8867
+#define ID_EPL_DELETE_ALL		8868
+#define ID_EPL_XMIT             8869
 
 //----------------------------------------------------------------------------------------------------------
 //    Forward declarations
