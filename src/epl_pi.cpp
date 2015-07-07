@@ -304,294 +304,340 @@ wxString epl_pi::GetLongDescription()
 
 }
 
+
+/*----------------------------------------------------------------------
+ * Implements the menu items shown on the context menu.
+ *--------------------------------------------------------------------*/
 void epl_pi::PopupMenuHandler( wxCommandEvent& event )
 {
-    bool handled = false;
-    switch( event.GetId() ) {
-        case ID_EPL_DELETE:
-            if(m_sel_brg){
-                
-                // delete the selectable
-                if(m_pFind){
-                    m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A );
-                    m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B );
-                    m_select->DeleteSelectableSegment( m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG );
-                }
-                
-                //  Remove the bearing from the array
-                for(unsigned int i=0 ; i < m_brg_array.GetCount() ; i++){
-                    brg_line *pb = m_brg_array.Item(i);
-                    if(pb == m_sel_brg){
-                        m_brg_array.Detach(i);
-                    }
-                }
-                
-                //  Finally, delete the bearing
-                delete m_sel_brg;
-            }
-            
-            handled = true;
-            break;
-            
-        case ID_EPL_XMIT:
-        {
-            
-            m_NMEA0183.TalkerID = _T("EC");
-            
-            SENTENCE snt;
-             
-            if( m_fix_lat < 0. )
-                m_NMEA0183.Gll.Position.Latitude.Set( -m_fix_lat, _T("S") );
-            else
-                m_NMEA0183.Gll.Position.Latitude.Set( m_fix_lat, _T("N") );
-            
-            if( m_fix_lon < 0. )
-                m_NMEA0183.Gll.Position.Longitude.Set( -m_fix_lon, _T("W") );
-            else
-                m_NMEA0183.Gll.Position.Longitude.Set( m_fix_lon, _T("E") );
-            
-            wxDateTime now = wxDateTime::Now();
-            wxDateTime utc = now.ToUTC();
-            wxString time = utc.Format( _T("%H%M%S") );
-            m_NMEA0183.Gll.UTCTime = time;
+	bool handled = false;
+	switch( event.GetId() ) {
+	case ID_EPL_DELETE_SGL:
+		if(m_sel_brg){
 
-            m_NMEA0183.Gll.Mode = _T("M");              // Use GLL 2.3 specification
-                                                        // and send "M" for "Manual fix"
-            m_NMEA0183.Gll.IsDataValid = NFalse;        // Spec requires "Invalid" for manual fix
-             
-            m_NMEA0183.Gll.Write( snt );
+			// delete the selectable
+			if(m_pFind){
+				m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A );
+				m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B );
+				m_select->DeleteSelectableSegment( m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG );
+			}
 
-            wxLogMessage(snt.Sentence);
-            PushNMEABuffer( snt.Sentence );
-            
-            handled = true;
-            break;
-        }
-        
-        default:
-            break;
-    }
-    
-    if(!handled)
-        event.Skip();
+			//  Remove the bearing from the array
+			for(unsigned int i=0 ; i < m_brg_array.GetCount() ; i++){
+				brg_line *pb = m_brg_array.Item(i);
+				if(pb == m_sel_brg){
+					m_brg_array.Detach(i);
+				}
+			}
+
+			//  Finally, delete the bearing
+			delete m_sel_brg;
+		}
+
+		handled = true;
+		break;
+
+	case ID_EPL_DELETE_ALL:
+		//  simply empty the array of bearing lines
+		m_brg_array.Clear();
+
+		handled = true;
+		break;
+
+	case ID_EPL_XMIT:
+		{
+			m_NMEA0183.TalkerID = _T("EC");
+
+			SENTENCE snt;
+
+			if( m_fix_lat < 0. )
+				m_NMEA0183.Gll.Position.Latitude.Set( -m_fix_lat, _T("S") );
+			else
+				m_NMEA0183.Gll.Position.Latitude.Set( m_fix_lat, _T("N") );
+
+			if( m_fix_lon < 0. )
+				m_NMEA0183.Gll.Position.Longitude.Set( -m_fix_lon, _T("W") );
+			else
+				m_NMEA0183.Gll.Position.Longitude.Set( m_fix_lon, _T("E") );
+
+			wxDateTime now = wxDateTime::Now();
+			wxDateTime utc = now.ToUTC();
+			wxString time = utc.Format( _T("%H%M%S") );
+			m_NMEA0183.Gll.UTCTime = time;
+
+			m_NMEA0183.Gll.Mode = _T("M");              // Use GLL 2.3 specification
+			// and send "M" for "Manual fix"
+			m_NMEA0183.Gll.IsDataValid = NFalse;        // Spec requires "Invalid" for manual fix
+
+			m_NMEA0183.Gll.Write( snt );
+
+			wxLogMessage(snt.Sentence);
+			PushNMEABuffer( snt.Sentence );
+
+			handled = true;
+		}
+		break;
+
+	default:
+		;		// do nothing
+	}
+
+	if(!handled)
+		event.Skip();
 }
     
+
+/*----------------------------------------------------------------------
+ * Deals with the low-level actions on the mouse including roll-over,
+ * mouse clicks etc.  Dispatches to various handlers depending on
+ * whether a context menu or pop-up item is required.
+ * 
+ * @return					true if this method handled the event
+ *--------------------------------------------------------------------*/
 bool epl_pi::MouseEventHook( wxMouseEvent &event )
 {
-    bool bret = false;
+	bool bret = false;
 
-    m_mouse_x = event.m_x;
-    m_mouse_y = event.m_y;
-    
-    //  Retrigger the rollover timer
-    if( m_pBrgRolloverWin && m_pBrgRolloverWin->IsActive() )
-        m_RolloverPopupTimer.Start( 10, wxTIMER_ONE_SHOT );               // faster response while the rollover is turned on
-    else
-        m_RolloverPopupTimer.Start( m_rollover_popup_timer_msec, wxTIMER_ONE_SHOT );
-        
-    wxPoint mp(event.m_x, event.m_y);
-    GetCanvasLLPix( &g_ovp, mp, &m_cursor_lat, &m_cursor_lon);
+	m_mouse_x = event.m_x;
+	m_mouse_y = event.m_y;
 
-    //  On button push, find any bearing line selecteable, and other useful data
-    if( event.RightDown() || event.LeftDown()) {
-        m_sel_brg = NULL;
-        
-        m_pFind = m_select->FindSelection( m_cursor_lat, m_cursor_lon, SELTYPE_POINT_GENERIC );
-        
-        if(m_pFind){
-            for(unsigned int i=0 ; i < m_brg_array.GetCount() ; i++){
-                brg_line *pb = m_brg_array.Item(i);
-                
-                if(m_pFind->m_pData1 == pb){
-                    m_sel_brg = pb;
-                    m_sel_part = m_pFind->GetUserData();
-                    if(SEL_POINT_A == m_sel_part){
-                        m_sel_pt_lat = pb->GetLatA();
-                        m_sel_pt_lon = pb->GetLonA();
-                    }
-                    else {
-                        m_sel_pt_lat = pb->GetLatB();
-                        m_sel_pt_lon = pb->GetLonB();
-                    }
-                    
-                    break;
-                }
-            }
-        }
-        else{
-            m_pFind = m_select->FindSelection( m_cursor_lat, m_cursor_lon, SELTYPE_SEG_GENERIC );
-            
-            if(m_pFind){
-                for(unsigned int i=0 ; i < m_brg_array.GetCount() ; i++){
-                    brg_line *pb = m_brg_array.Item(i);
-                    
-                    if(m_pFind->m_pData1 == pb){
-                        m_sel_brg = pb;
-                        m_sel_part = m_pFind->GetUserData();
-                        
-                        //  Get the mercator offsets from the cursor point to the brg "A" point
-                        toSM_Plugin(m_cursor_lat, m_cursor_lon, pb->GetLatA(), pb->GetLonA(),
-                                    &m_segdrag_ref_x, &m_segdrag_ref_y);
-                        m_sel_pt_lat = m_cursor_lat;
-                        m_sel_pt_lon = m_cursor_lon;
-                        
-                    }
-                }
-            }
-        }
-    }
-    
-        
+	//  Retrigger the rollover timer
+	if( m_pBrgRolloverWin && m_pBrgRolloverWin->IsActive() )
+		m_RolloverPopupTimer.Start( 10, wxTIMER_ONE_SHOT );               // faster response while the rollover is turned on
+	else
+		m_RolloverPopupTimer.Start( m_rollover_popup_timer_msec, wxTIMER_ONE_SHOT );
 
-    if( event.RightDown() ) {
-        
-        if( m_sel_brg || m_bshow_fix_hat){
-        
-            wxMenu* contextMenu = new wxMenu;
-        
-            wxMenuItem *brg_item = 0;
-            wxMenuItem *fix_item = 0;
-            
-            if(!m_bshow_fix_hat && m_sel_brg){
-                brg_item = new wxMenuItem(contextMenu, ID_EPL_DELETE, _("Delete Bearing") );
-                contextMenu->Append(brg_item);
-                GetOCPNCanvasWindow()->Connect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
-                                                wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
-            }
-  
-            if(m_bshow_fix_hat){
-                wxMenuItem *fix_item = new wxMenuItem(contextMenu, ID_EPL_XMIT, _("Send sighted fix to device") );
-                contextMenu->Append(fix_item);
-                GetOCPNCanvasWindow()->Connect( ID_EPL_XMIT, wxEVT_COMMAND_MENU_SELECTED,
-                                            wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
-            }
-            
-            //   Invoke the drop-down menu
-            GetOCPNCanvasWindow()->PopupMenu( contextMenu, m_mouse_x, m_mouse_y );
-            
-            if(brg_item){
-                GetOCPNCanvasWindow()->Disconnect( ID_EPL_DELETE, wxEVT_COMMAND_MENU_SELECTED,
-                                            wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
-            }
-            
-            if(fix_item){
-                GetOCPNCanvasWindow()->Connect( ID_EPL_XMIT, wxEVT_COMMAND_MENU_SELECTED,
-                                            wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
-            }
-            
-            bret = true;                // I have eaten this event
-        }
-        
-    }
-        
-    else if( event.LeftDown() ) {
-    }
+	wxPoint mp(event.m_x, event.m_y);
+	GetCanvasLLPix( &g_ovp, mp, &m_cursor_lat, &m_cursor_lon);
 
-    else if(event.Dragging()){
-        if(m_sel_brg){
-            if( (SEL_POINT_A == m_sel_part) || (SEL_POINT_B == m_sel_part)){
-                double dx, dy;
-                toSM_Plugin(m_cursor_lat, m_cursor_lon, m_sel_pt_lat, m_sel_pt_lon, &dx, &dy);
-                double distance = sqrt( (dx * dx) + (dy * dy));
- 
-                double new_lat = m_sel_pt_lat;
-                double new_lon = m_sel_pt_lon;
-            
-                double alpha = atan2(dx, dy);
-                if(alpha < 0)
-                    alpha += 2 * PI;
+	//  On button push, find any bearing line selecteable, and other useful data
+	if( event.RightDown() || event.LeftDown()) {
+		m_sel_brg = NULL;
 
-                double brg_perp = (m_sel_brg->GetBearingTrue() - 90) * PI / 180.;
-                if(brg_perp < 0)
-                    brg_perp += 2 * PI;
-                
-                double delta_alpha = alpha - brg_perp;
-                if(delta_alpha < 0)
-                    delta_alpha += 2 * PI;
-                
-                double move_dist = distance * sin(delta_alpha);
-                
-                double ndy = move_dist * cos(m_sel_brg->GetBearingTrue() * PI / 180.);
-                double ndx = move_dist * sin(m_sel_brg->GetBearingTrue() * PI / 180.);
-                
-                fromSM_Plugin(ndx, ndy, m_sel_pt_lat, m_sel_pt_lon, &new_lat, &new_lon);
-                
-                //  Update the brg line parameters
-                if(SEL_POINT_A == m_sel_part){
-                    m_sel_brg->m_latA = new_lat;
-                    m_sel_brg->m_lonA = new_lon;
-                }
-                else if(SEL_POINT_B == m_sel_part){
-                    m_sel_brg->m_latB = new_lat;
-                    m_sel_brg->m_lonB = new_lon;
-                }
-   
-                m_sel_brg->CalcLength();
-                
-                // Update the selectable items
-                if(m_pFind){
-                    m_select->DeleteSelectableSegment( m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG );
-                    m_select->AddSelectableSegment( m_sel_brg->GetLatA(), m_sel_brg->GetLonA(),
-                                                    m_sel_brg->GetLatB(), m_sel_brg->GetLonB(),
-                                                    m_sel_brg, SEL_SEG );
-   
-                    m_pFind->m_slat = new_lat;
-                    m_pFind->m_slon = new_lon;
-                }
-                
-                GetOCPNCanvasWindow()->Refresh();
-                bret = true;
-            }
-            else if(SEL_SEG == m_sel_part){
-                
-                 //  Get the Mercator offsets from original select point to this drag point 
-                 double dx, dy;
-                 toSM_Plugin(m_cursor_lat, m_cursor_lon, m_sel_pt_lat, m_sel_pt_lon, &dx, &dy);
-                 
-                 //  Add in the offsets to item point "A"
-                 dx -= m_segdrag_ref_x;
-                 dy -= m_segdrag_ref_y;
-                 
-                 //   And calculate new position of item point "A"
-                 double nlatA, nlonA;
-                 fromSM_Plugin(dx, dy, m_sel_pt_lat, m_sel_pt_lon, &nlatA, &nlonA);
-                 
-                 //  Set point "A"
-                 m_sel_brg->m_latA = nlatA;
-                 m_sel_brg->m_lonA = nlonA;
-                 
-                 // Recalculate point "B"
-                 m_sel_brg->CalcPointB();
+		m_pFind = m_select->FindSelection( m_cursor_lat, m_cursor_lon, SELTYPE_POINT_GENERIC );
 
-                 // Update the selectable items
-                 m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A );
-                 m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B );
-                 m_select->DeleteSelectableSegment( m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG );
+		if(m_pFind){
+			for(unsigned int i=0 ; i < m_brg_array.GetCount() ; i++){
+				brg_line *pb = m_brg_array.Item(i);
 
-                 m_select->AddSelectablePoint( m_sel_brg->GetLatA(), m_sel_brg->GetLonA(), m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A );
-                 m_select->AddSelectablePoint( m_sel_brg->GetLatB(), m_sel_brg->GetLonB(), m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B );
-                 m_select->AddSelectableSegment( m_sel_brg->GetLatA(), m_sel_brg->GetLonA(),
-                                                 m_sel_brg->GetLatB(), m_sel_brg->GetLonB(),
-                                                 m_sel_brg, SEL_SEG );
-                 
-                 
-                 GetOCPNCanvasWindow()->Refresh();
-                 bret = true;
-            }
-        }
-    }
-    if( event.LeftUp() ) {
-        if(m_sel_brg)
-            bret = true;
-        
-        m_pFind = NULL;
-        m_sel_brg = NULL;
-        
-        m_nfix = CalculateFix();
-        
-    }
+				if(m_pFind->m_pData1 == pb){
+					m_sel_brg = pb;
+					m_sel_part = m_pFind->GetUserData();
+					if(SEL_POINT_A == m_sel_part){
+						m_sel_pt_lat = pb->GetLatA();
+						m_sel_pt_lon = pb->GetLonA();
+					}
+					else {
+						m_sel_pt_lat = pb->GetLatB();
+						m_sel_pt_lon = pb->GetLonB();
+					}
 
-    return bret;
+					break;
+				}
+			}
+		}
+		else{
+			m_pFind = m_select->FindSelection( m_cursor_lat, m_cursor_lon, SELTYPE_SEG_GENERIC );
+
+			if(m_pFind){
+				for(unsigned int i=0 ; i < m_brg_array.GetCount() ; i++){
+					brg_line *pb = m_brg_array.Item(i);
+
+					if(m_pFind->m_pData1 == pb){
+						m_sel_brg = pb;
+						m_sel_part = m_pFind->GetUserData();
+
+						//  Get the mercator offsets from the cursor point to the brg "A" point
+						toSM_Plugin(m_cursor_lat, m_cursor_lon, pb->GetLatA(), pb->GetLonA(),
+							&m_segdrag_ref_x, &m_segdrag_ref_y);
+						m_sel_pt_lat = m_cursor_lat;
+						m_sel_pt_lon = m_cursor_lon;
+
+					}
+				}
+			}
+		}
+	}
+
+
+	if( event.RightDown() ) {
+
+		if( m_sel_brg || m_bshow_fix_hat){
+
+			wxMenu* contextMenu = new wxMenu;
+
+			wxMenuItem *brg_item_sgl = 0;
+			wxMenuItem *brg_item_all = 0;
+			wxMenuItem *fix_item = 0;
+
+			if(!m_bshow_fix_hat && m_sel_brg){
+				// add items to the menu only relevant to a bearing line
+				brg_item_sgl = new wxMenuItem(contextMenu, ID_EPL_DELETE_SGL, _("Delete Bearing Line") );
+				contextMenu->Append(brg_item_sgl);
+				GetOCPNCanvasWindow()->Connect( ID_EPL_DELETE_SGL, wxEVT_COMMAND_MENU_SELECTED,
+					wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+
+				brg_item_all = new wxMenuItem(contextMenu, ID_EPL_DELETE_ALL, _("Delete All Bearing Lines") );
+				contextMenu->Append(brg_item_all);
+				GetOCPNCanvasWindow()->Connect( ID_EPL_DELETE_ALL, wxEVT_COMMAND_MENU_SELECTED,
+					wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+			}
+
+			if(m_bshow_fix_hat){
+				// add items to the menu only relevant to a potential fix area
+				wxMenuItem *fix_item = new wxMenuItem(contextMenu, ID_EPL_XMIT, _("Send sighted fix to device") );
+				contextMenu->Append(fix_item);
+				GetOCPNCanvasWindow()->Connect( ID_EPL_XMIT, wxEVT_COMMAND_MENU_SELECTED,
+					wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+			}
+
+			//   Invoke the drop-down menu
+			GetOCPNCanvasWindow()->PopupMenu( contextMenu, m_mouse_x, m_mouse_y );
+
+			/* TODO                       MJW - what do these actions do, and why is one a connect and the other a disconnect? ********************************
+			if(brg_item){
+			GetOCPNCanvasWindow()->Disconnect( ID_EPL_DELETE_SGL, wxEVT_COMMAND_MENU_SELECTED,
+			wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+			}
+
+			if(fix_item){
+			GetOCPNCanvasWindow()->Connect( ID_EPL_XMIT, wxEVT_COMMAND_MENU_SELECTED,
+			wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+			}
+
+
+			************** I think they should all be disconnects after opening the menu: test and implement
+			*/
+
+			// disconnect / release the items again after showing the menu
+			if(brg_item_sgl){
+				GetOCPNCanvasWindow()->Disconnect( ID_EPL_DELETE_SGL, wxEVT_COMMAND_MENU_SELECTED,
+					wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+			}
+
+			if(brg_item_all){
+				GetOCPNCanvasWindow()->Disconnect( ID_EPL_DELETE_ALL, wxEVT_COMMAND_MENU_SELECTED,
+					wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+			}
+
+			if(fix_item){
+				GetOCPNCanvasWindow()->Connect( ID_EPL_XMIT, wxEVT_COMMAND_MENU_SELECTED,
+					wxCommandEventHandler( epl_pi::PopupMenuHandler ), NULL, this );
+			}
+
+			bret = true;                // I have eaten this event
+		}
+
+	}
+
+	else if( event.LeftDown() ) {
+	}
+
+	else if(event.Dragging()){
+		if(m_sel_brg){
+			if( (SEL_POINT_A == m_sel_part) || (SEL_POINT_B == m_sel_part)){
+				double dx, dy;
+				toSM_Plugin(m_cursor_lat, m_cursor_lon, m_sel_pt_lat, m_sel_pt_lon, &dx, &dy);
+				double distance = sqrt( (dx * dx) + (dy * dy));
+
+				double new_lat = m_sel_pt_lat;
+				double new_lon = m_sel_pt_lon;
+
+				double alpha = atan2(dx, dy);
+				if(alpha < 0)
+					alpha += 2 * PI;
+
+				double brg_perp = (m_sel_brg->GetBearingTrue() - 90) * PI / 180.;
+				if(brg_perp < 0)
+					brg_perp += 2 * PI;
+
+				double delta_alpha = alpha - brg_perp;
+				if(delta_alpha < 0)
+					delta_alpha += 2 * PI;
+
+				double move_dist = distance * sin(delta_alpha);
+
+				double ndy = move_dist * cos(m_sel_brg->GetBearingTrue() * PI / 180.);
+				double ndx = move_dist * sin(m_sel_brg->GetBearingTrue() * PI / 180.);
+
+				fromSM_Plugin(ndx, ndy, m_sel_pt_lat, m_sel_pt_lon, &new_lat, &new_lon);
+
+				//  Update the brg line parameters
+				if(SEL_POINT_A == m_sel_part){
+					m_sel_brg->m_latA = new_lat;
+					m_sel_brg->m_lonA = new_lon;
+				}
+				else if(SEL_POINT_B == m_sel_part){
+					m_sel_brg->m_latB = new_lat;
+					m_sel_brg->m_lonB = new_lon;
+				}
+
+				m_sel_brg->CalcLength();
+
+				// Update the selectable items
+				if(m_pFind){
+					m_select->DeleteSelectableSegment( m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG );
+					m_select->AddSelectableSegment( m_sel_brg->GetLatA(), m_sel_brg->GetLonA(),
+						m_sel_brg->GetLatB(), m_sel_brg->GetLonB(),
+						m_sel_brg, SEL_SEG );
+
+					m_pFind->m_slat = new_lat;
+					m_pFind->m_slon = new_lon;
+				}
+
+				GetOCPNCanvasWindow()->Refresh();
+				bret = true;
+			}
+			else if(SEL_SEG == m_sel_part){
+
+				//  Get the Mercator offsets from original select point to this drag point 
+				double dx, dy;
+				toSM_Plugin(m_cursor_lat, m_cursor_lon, m_sel_pt_lat, m_sel_pt_lon, &dx, &dy);
+
+				//  Add in the offsets to item point "A"
+				dx -= m_segdrag_ref_x;
+				dy -= m_segdrag_ref_y;
+
+				//   And calculate new position of item point "A"
+				double nlatA, nlonA;
+				fromSM_Plugin(dx, dy, m_sel_pt_lat, m_sel_pt_lon, &nlatA, &nlonA);
+
+				//  Set point "A"
+				m_sel_brg->m_latA = nlatA;
+				m_sel_brg->m_lonA = nlonA;
+
+				// Recalculate point "B"
+				m_sel_brg->CalcPointB();
+
+				// Update the selectable items
+				m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A );
+				m_select->DeleteSelectablePoint( m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B );
+				m_select->DeleteSelectableSegment( m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG );
+
+				m_select->AddSelectablePoint( m_sel_brg->GetLatA(), m_sel_brg->GetLonA(), m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A );
+				m_select->AddSelectablePoint( m_sel_brg->GetLatB(), m_sel_brg->GetLonB(), m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B );
+				m_select->AddSelectableSegment( m_sel_brg->GetLatA(), m_sel_brg->GetLonA(),
+					m_sel_brg->GetLatB(), m_sel_brg->GetLonB(),
+					m_sel_brg, SEL_SEG );
+
+
+				GetOCPNCanvasWindow()->Refresh();
+				bret = true;
+			}
+		}
+	}
+	if( event.LeftUp() ) {
+		if(m_sel_brg)
+			bret = true;
+
+		m_pFind = NULL;
+		m_sel_brg = NULL;
+
+		m_nfix = CalculateFix();
+
+	}
+
+	return bret;
 }
 
 
@@ -613,7 +659,7 @@ void epl_pi::OnRolloverPopupTimerEvent( wxTimerEvent& event )
     //  Check to see if we are in the cocked hat fix region...
     
     if(m_nfix >= 2){
-        MyFlPoint hat_array[100];            // enough
+        MyFlPoint hat_array[100];            // enough			** TODO - deal with any number of bearing lines
         
         for(unsigned int i=0 ; i < m_hat_array.GetCount() ; i++){
             vector2D *pt = m_hat_array.Item(i);
@@ -1015,15 +1061,22 @@ void epl_pi::ProcessBrgCapture(double brg_rel, double brg_subtended, double brg_
     double l1 = ((g_ovp.pix_width / g_ovp.view_scale_ppm) /1852.) * 0.2;
     double length = wxMin(l1, 10.0);
     
-    
-    // Process the normal case where the bearing is ship-head relative
-    
-    //  If we don't have a true heading available, use ownship cog
-    if(m_head_active)
-        brg_true = brg_rel + m_hdt;
-    else
-        brg_true = brg_rel + m_ownship_cog;
-    
+    // normal case is for absolute bearing but if the bearing is relative,
+	// the ship's heading needs to be applied
+	// ** TODO should check the TM_flag is valid too ( what to do if not... )
+	if ( !wxIsNaN(brg_TM) ) {
+		// ** TODO change the type [enum] var(?) and apply variation if brg_TM_flag indicates magnetic
+		brg_true = brg_TM;
+	
+	} else {
+		//  If we don't have a true heading available, use ownship cog
+		if(m_head_active)
+			brg_true = brg_rel + m_hdt;
+		else
+			// ** TODO TBD - if no reliable heading then (a) pop up an error message? and (b) don't plot anything
+			brg_true = brg_rel + m_ownship_cog;
+	}
+
     type = TRUE_BRG;
     
     //  Do not add duplicates
