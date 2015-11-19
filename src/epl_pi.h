@@ -5,6 +5,8 @@
  * Purpose:  Dashboard Plugin
  * Author:   Jean-Eudes Onfray
  *
+ * 16 Nov 15 MJW - added a 'sighting group' identifier to the brg_line class
+ *
  ***************************************************************************
  *   Copyright (C) 2010 by David S. Register                               *
  *                                                                         *
@@ -35,7 +37,7 @@
 #endif //precompiled headers
 
 #define     PLUGIN_VERSION_MAJOR    0
-#define     PLUGIN_VERSION_MINOR    2
+#define     PLUGIN_VERSION_MINOR    3
 
 #define     MY_API_VERSION_MAJOR    1
 #define     MY_API_VERSION_MINOR    12
@@ -71,9 +73,13 @@
 #define SEL_POINT_B     1
 #define SEL_SEG         2
 
+// max number of points for a cocked-hat area
+#define MAX_VERTICES	5
+
 //      Menu items
-#define ID_EPL_DELETE           8867
-#define ID_EPL_XMIT             8868
+#define ID_EPL_DELETE_SGL       8867
+#define ID_EPL_DELETE_ALL		8868
+#define ID_EPL_XMIT             8869
 
 //----------------------------------------------------------------------------------------------------------
 //    Forward declarations
@@ -148,7 +154,8 @@ private:
       void ProcessBrgCapture(double brg_rel, double brg_subtended, double brg_TM, int brg_TM_flag,
                                 wxString Ident, wxString target);
 
-      int CalculateFix( void );
+      void CalculateFix( void );
+	  void SortMHatArray();
       
       wxBitmap         *m_pplugin_icon;
       wxFileConfig     *m_pconfig;
@@ -165,10 +172,17 @@ private:
       Select               *m_select;
       
       ArrayOfBrgLines      m_brg_array;
+	  // think these all need to go
+	  /*
       double               m_fix_lat;
       double               m_fix_lon;
+	  */
+
+	  /* vertices of the currently highlighted cocked-hat region - may
+	   * be a point if only 2 lines intersect                         */
       ArrayOf2DPoints      m_hat_array;
-      int                  m_nfix;
+
+	  /* set if there is currently a highlighted area for cocked-hat  */
       bool                 m_bshow_fix_hat;
       
       //        Selection variables
@@ -269,15 +283,16 @@ public:
     void SetTargetName( wxString target){ m_TargetName = target; };
     wxString GetIdent(){ return m_Ident; }
     wxString GetTargetName(){ return m_TargetName; }
+
+	// accessors for the sighting group - related bearing lines
+	void SetSightGroup(int group){ m_sight_group = group; }
+	int GetSightGroup() { return m_sight_group; }
     
     void CalcPointB( void );
     void CalcLength( void );
     
     //  Public methods
     void Draw( void );
-    void DrawInfoBox( void );
-    void DrawInfoAligned( void );
-
     bool getIntersect(brg_line *b, double *lat, double *lon);
         
     
@@ -293,9 +308,11 @@ private:
     
     wxString    m_TargetName;
     wxString    m_Ident;
+
+	/// details which group of sightings to which this bearing belongs
+	int			m_sight_group;
     
     BearingTypeEnum m_type;
-    double      m_bearing;
     double      m_bearing_true;
     
     
