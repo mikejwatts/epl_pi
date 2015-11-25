@@ -1,5 +1,8 @@
 /******************************************************************************
  *
+ * 25 Nov 15 MJW Changed a couple of function names to better match what
+ *               they do.
+ *
  *
  ***************************************************************************
  *   Copyright (C) 2010 by David S. Register                               *
@@ -32,10 +35,13 @@
 
 #include "TexFont.h"
 
+// number of pieces to use for rounding a 90° corner
+#define N_ROUNDING_PIECES			9
 
-void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
+
+void RenderRoundedRect( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
                     unsigned char transparency );
-void AlphaBlendingPoly( wxDC *pdc, int n, wxPoint points[], wxColour color, unsigned char transparency );
+void RenderPolygon( wxDC *pdc, int n, wxPoint points[], wxColour color, unsigned char transparency );
 
 void RenderLine(wxDC *dc, void *pgc, int x1, int y1, int x2, int y2, wxColour color, int width);
 void RenderText( wxDC *dc, void *pgc, wxString &msg, wxFont *font, wxColour &color, int xp, int yp, double angle);
@@ -47,6 +53,7 @@ void RenderText( wxDC *dc, void *pgc, wxString &msg, wxFont *font, wxColour &col
 //void GLDrawLine( wxCoord x1, wxCoord y1, wxCoord x2, wxCoord y2 );
 void RenderGLText( TexFont *ptf, wxString &msg, wxFont *font, int xp, int yp, double angle);
 
+void DrawGLRoundedCorner(int x, int y, double sa, double arc, float rad);
+
 
 #endif
-
