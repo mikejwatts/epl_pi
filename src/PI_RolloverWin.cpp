@@ -35,7 +35,7 @@
 //#include "navutil.h"
 //#include "FontMgr.h"
 
-void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
+void RenderRoundedRect( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
                     unsigned char transparency );
 
 
@@ -95,7 +95,7 @@ void RolloverWin::SetBitmap( int rollover )
 
 //    ocpnDC dc( mdc );
 
-    AlphaBlending( &mdc, 0, 0, m_size.x, m_size.y, 6.0, wxTheColourDatabase->Find(_T("YELLOW")), 172 );
+    RenderRoundedRect( &mdc, 0, 0, m_size.x, m_size.y, 6.0, wxTheColourDatabase->Find(_T("YELLOW")), 172 );
  //   mdc.SetTextForeground( FontMgr::Get().GetFontColor( _("AISRollover") ) );
 
     if(m_plabelFont && m_plabelFont->IsOk()) {
