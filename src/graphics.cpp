@@ -5,6 +5,10 @@
  * Purpose:  Dashboard Plugin
  * Author:   David S Register
  *
+ * 25 Nov 15 MJW Fixed programmer-forced crash for OpenGL engine on rounded
+ *               rectangle, also changed a couple of function names to
+ *				 better match what they do.
+ *
  ***************************************************************************
  *   Copyright (C) 2010 by David S. Register                               *
  *                                                                         *
@@ -180,7 +184,7 @@ void RenderText( wxDC *dc, void *pgc, wxString &msg, wxFont *font, wxColour &col
             pointsr[ip].y = (int)yr;
         }
         
-        wxBrush fill_brush( wxTheColourDatabase->Find(_T("YELLOW")));
+        wxBrush fill_brush( wxTheColourDatabase->Find(_T("GREEN")), 50);
         dc->SetBrush(fill_brush);
         dc->DrawPolygon(4, pointsr, xp, yp);
         
@@ -196,9 +200,22 @@ void RenderText( wxDC *dc, void *pgc, wxString &msg, wxFont *font, wxColour &col
 }
 
 
-/* render a rectangle at a given color and transparency */
-void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
-                    unsigned char transparency )
+/*----------------------------------------------------------------------
+ * Render a rounded rectangle at the position provided with the given
+*  size, corner radius, colour and transparency.
+ *
+ * @param pdc [in]			pointer to the graphics display controller -
+ *							NULL for OpenGL engine
+ * @param x [in]			x position in pixels
+ * @param y [in]			y position in pixels
+ * @param size_x [in]		width in pixels
+ * @param size_y [in]		height in pixels
+ * @param radius [in]       corner radius in pixels
+ * @param color [in]		fill colour
+ * @param transparency [in] transparency, 255 = solid
+ *--------------------------------------------------------------------*/
+void RenderRoundedRect( wxDC *pdc, int x, int y, int size_x, int size_y,
+		float radius, wxColour color, unsigned char transparency )
 {
     if( pdc ) {
         //    Get wxImage of area of interest
@@ -256,19 +273,37 @@ void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radiu
         // Do it explicitely here for all platforms.
         pdc->CalcBoundingBox( x, y );
         pdc->CalcBoundingBox( x + size_x, y + size_y );
+
     } else {
 #ifdef ocpnUSE_GL
+
         /* opengl version */
+/* Developer note - only used with small radii at the moment, for larger
+ * values may need to mess with anti-aliasing hints or the like	to make
+ * it aesthetically pleasing										  */
+
         glEnable( GL_BLEND );
         glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+        glColor4ub( color.Red(), color.Green(), color.Blue(), transparency );
         
         if(radius > 1.0f){
-            wxColour c(color.Red(), color.Green(), color.Blue(), transparency);
-            pdc->SetBrush(wxBrush(c));
-            pdc->DrawRoundedRectangle( x, y, size_x, size_y, radius );
-        }
-        else {
-            glColor4ub( color.Red(), color.Green(), color.Blue(), transparency );
+			glBegin(GL_POLYGON);
+
+			// top-left corner
+			DrawGLRoundedCorner(x, y + radius, 3 * PI / 2, PI / 2, radius);
+
+			// top-right
+			DrawGLRoundedCorner(x + size_x - radius, y, 0.0, PI / 2, radius);
+
+			// bottom-right
+			DrawGLRoundedCorner(x + size_x, y + size_y - radius, PI / 2, PI / 2, radius);
+
+			// bottom-left
+			DrawGLRoundedCorner(x + radius, y + size_y, PI, PI / 2, radius);
+
+			glEnd();
+
+        } else {
             glBegin( GL_QUADS );
             glVertex2i( x, y );
             glVertex2i( x + size_x, y );
@@ -277,12 +312,63 @@ void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radiu
             glEnd();
         }
         glDisable( GL_BLEND );
+
 #endif
     }
 }
 
 
-void AlphaBlendingPoly( wxDC *pdc, int n, wxPoint points[], wxColour color, unsigned char transparency )
+/*----------------------------------------------------------------------
+ * Helper method for GL only draws a rounded corner, from the start
+ * position and angle given, through the arc at the radius provided in a
+ * clockwise direction.  Assumes that glBegin and glEnd are called
+ * from the calling context.  Both the start and the end of the 'arc'
+ * are included, so a typical convex polygon only needs to make calls
+ * to this method and the intervening lines will be joined automatically.
+ *
+ * @param x [in]			x position in pixels
+ * @param y [in]			y position in pixels
+ * @param sa [in]			start angle in radians 0 means going East,
+ *							PI / 2 is going South!
+ * @param arc [in]			length of arc in radians
+ * @param r [in]			length of radius in pixels
+ *--------------------------------------------------------------------*/
+void DrawGLRoundedCorner(int x, int y, double sa, double arc, float r) {
+// only valid for OpenGL graphics engine
+#ifdef ocpnUSE_GL
+	// centre of the arc, for clockwise sense
+	float cent_x = x + r * cos(sa + PI / 2);
+	float cent_y = y + r * sin(sa + PI / 2);
+
+	// build up piecemeal including end of the arc
+	int n = ceil(N_ROUNDING_PIECES * arc / PI * 2);
+	for (int i = 0; i <= n; i++) {
+		double ang = sa + arc * (double)i  / (double)n;
+		
+		// compute the next point
+		float next_x = cent_x + r * sin(ang);
+		float next_y = cent_y - r * cos(ang);
+		glVertex2f(next_x, next_y);
+	}
+
+#endif
+}
+
+
+/*----------------------------------------------------------------------
+ * Render a convex polygon using the points provided along with the
+ * colour and transparency given.  A more complex polygon might work
+ * with pdc but not with OpenGL using this implementation.
+ *
+ * @param pdc [in]			pointer to the graphics display controller -
+ *							NULL for OpenGL engine
+ * @param n [in]			number of vertices
+ * @param points [in]		array of coordinates defining the polygon
+ * @param color [in]		fill colour
+ * @param transparency [in] transparency, 255 = solid
+ *--------------------------------------------------------------------*/
+void RenderPolygon( wxDC *pdc, int n, wxPoint points[], wxColour color,
+	unsigned char transparency )
 {
     if( pdc ) {
         wxColour c(color.Red(), color.Green(), color.Blue(), transparency);
@@ -290,7 +376,25 @@ void AlphaBlendingPoly( wxDC *pdc, int n, wxPoint points[], wxColour color, unsi
         pdc->SetPen(wxPen(c));
         
         pdc->DrawPolygon(n, points);
-    }
+
+	} else {
+#ifdef ocpnUSE_GL
+
+        /* opengl version */
+        glEnable( GL_BLEND );
+        glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+        glColor4ub( color.Red(), color.Green(), color.Blue(), transparency );
+
+		glBegin(GL_POLYGON);
+		for (int i = 0; i < n; i++) {
+			glVertex2i(points[i].x, points[i].y);
+		}
+		glEnd();
+	
+        glDisable( GL_BLEND );
+
+#endif
+	}
 }
 
 
@@ -328,6 +432,3 @@ void RenderGLText( TexFont *ptf, wxString &msg, wxFont *font, int xp, int yp, do
         glPopMatrix();
     }
 }
-
-
-
