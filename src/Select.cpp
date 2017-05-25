@@ -626,6 +626,65 @@ SelectItem *Select::FindSelection( float slat, float slon, int fseltype )
     find_ok: return pFindSel;
 }
 
+// PPW Experiment in bug findingtrying to draw bounding box around rollover need to stop lat and longs 
+// for all brg lines for use later when rendering
+SelectItem *Select::FindAndDrawSelection(float slat, float slon, int fseltype, wxDC *pdc, wxGraphicsContext *gdc)
+{
+	float a, b, c, d;
+	SelectItem *pFindSel;
+
+	//CalcSelectRadius();
+
+	//    Iterate on the list
+	wxSelectableItemListNode *node = pSelectList->GetFirst();
+
+
+	wxColor bob = wxColour(0, 0, 255);
+
+	while (node) {
+		pFindSel = node->GetData();
+		if (pFindSel->m_seltype == fseltype) {
+			switch (fseltype){
+			case SELTYPE_POINT_GENERIC:
+			{
+				a = fabs(slat - pFindSel->m_slat);
+				b = fabs(slon - pFindSel->m_slon);
+
+				if ((fabs(slat - pFindSel->m_slat) < selectRadius)
+					&& (fabs(slon - pFindSel->m_slon) < selectRadius)) goto find_ok;
+				break;
+			}
+			case SELTYPE_SEG_GENERIC: {
+				a = pFindSel->m_slat;
+				b = pFindSel->m_slat2;
+				c = pFindSel->m_slon;
+				d = pFindSel->m_slon2;
+
+
+				//  Calculate the points
+				wxPoint ab, cd;
+			/*	GetCanvasPixLL(vp, &ab, pFindSel->m_slat, pFindSel->m_slon);
+				GetCanvasPixLL(vp, &cd, pFindSel->m_slat2, pFindSel->m_slon2);*/
+
+				RenderRoundedRect(pdc, 20, 20, 40, 40, 2, bob, 255);
+				RenderLine(pdc, gdc, 1426, 942, 1324, 28, bob, 20);
+
+
+				if (IsSegmentSelected(a, b, c, d, slat, slon)) goto find_ok;
+				break;
+			}
+			default:
+				break;
+			}
+		}
+
+		node = node->GetNext();
+	}
+
+	return NULL;
+find_ok: return pFindSel;
+}
+
 bool Select::IsSelectableSegmentSelected( float slat, float slon, SelectItem *pFindSel )
 {
     if(!pFindSel)

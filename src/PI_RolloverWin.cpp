@@ -1,26 +1,26 @@
 /******************************************************************************
- *
- * Project:  OpenCPN
- *
- ***************************************************************************
- *   Copyright (C) 2013 by David S. Register                               *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
- ***************************************************************************
- */
+*
+* Project:  OpenCPN
+*
+***************************************************************************
+*   Copyright (C) 2013 by David S. Register                               *
+*                                                                         *
+*   This program is free software; you can redistribute it and/or modify  *
+*   it under the terms of the GNU General Public License as published by  *
+*   the Free Software Foundation; either version 2 of the License, or     *
+*   (at your option) any later version.                                   *
+*                                                                         *
+*   This program is distributed in the hope that it will be useful,       *
+*   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+*   GNU General Public License for more details.                          *
+*                                                                         *
+*   You should have received a copy of the GNU General Public License     *
+*   along with this program; if not, write to the                         *
+*   Free Software Foundation, Inc.,                                       *
+*   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,  USA.         *
+***************************************************************************
+*/
 
 #include "wx/wxprec.h"
 
@@ -35,137 +35,137 @@
 //#include "navutil.h"
 //#include "FontMgr.h"
 
-void RenderRoundedRect( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
-                    unsigned char transparency );
+void RenderRoundedRect(wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
+	unsigned char transparency);
 
 
 BEGIN_EVENT_TABLE(RolloverWin, wxWindow) EVT_PAINT(RolloverWin::OnPaint)
-    EVT_TIMER(ROLLOVER_TIMER, RolloverWin::OnTimer)
-    EVT_MOUSE_EVENTS ( RolloverWin::OnMouseEvent )
+EVT_TIMER(ROLLOVER_TIMER, RolloverWin::OnTimer)
+EVT_MOUSE_EVENTS(RolloverWin::OnMouseEvent)
 
 END_EVENT_TABLE()
 
 // Define a constructor
-RolloverWin::RolloverWin( wxWindow *parent, int timeout ) :
-    wxWindow( parent, wxID_ANY, wxPoint( 0, 0 ), wxSize( 1, 1 ), wxNO_BORDER )
+RolloverWin::RolloverWin(wxWindow *parent, int timeout) :
+wxWindow(parent, wxID_ANY, wxPoint(0, 0), wxSize(1, 1), wxNO_BORDER)
 {
-    m_pbm = NULL;
+	m_pbm = NULL;
 
-    m_timer_timeout.SetOwner( this, ROLLOVER_TIMER );
-    m_timeout_sec = timeout;
-    m_mmouse_propogate = 0;
-    isActive = false;
-    m_plabelFont = NULL;
-    Hide();
+	m_timer_timeout.SetOwner(this, ROLLOVER_TIMER);
+	m_timeout_sec = timeout;
+	m_mmouse_propogate = 0;
+	isActive = false;
+	m_plabelFont = NULL;
+	Hide();
 }
 
 RolloverWin::~RolloverWin()
 {
-    delete m_pbm;
+	delete m_pbm;
 }
-void RolloverWin::OnTimer( wxTimerEvent& event )
+void RolloverWin::OnTimer(wxTimerEvent& event)
 {
- //   if( IsShown() ) Hide();
-}
-
-void RolloverWin::OnMouseEvent( wxMouseEvent& event )
-{
-    //    If directed, send mouse events up the window family tree,
-    //    until some parent window does NOT call event.Skip()
-    if( m_mmouse_propogate ) {
-        event.ResumePropagation( m_mmouse_propogate );
-        event.Skip();
-    }
+	//   if( IsShown() ) Hide();
 }
 
-void RolloverWin::SetBitmap( int rollover )
+void RolloverWin::OnMouseEvent(wxMouseEvent& event)
 {
-    
-    wxDC* cdc = new wxScreenDC();
-    wxPoint canvasPos = GetParent()->GetScreenPosition();
-
-    wxMemoryDC mdc;
-    delete m_pbm;
-    m_pbm = new wxBitmap( m_size.x, m_size.y, -1 );
-    mdc.SelectObject( *m_pbm );
-
-    mdc.Blit( 0, 0, m_size.x, m_size.y, cdc, m_position.x + canvasPos.x,
-              m_position.y + canvasPos.y );
-    delete cdc;
-
-//    ocpnDC dc( mdc );
-
-    RenderRoundedRect( &mdc, 0, 0, m_size.x, m_size.y, 6.0, wxTheColourDatabase->Find(_T("YELLOW")), 172 );
- //   mdc.SetTextForeground( FontMgr::Get().GetFontColor( _("AISRollover") ) );
-
-    if(m_plabelFont && m_plabelFont->IsOk()) {
-
-    //    Draw the text
-        mdc.SetFont( *m_plabelFont );
-
-        mdc.DrawLabel( m_string, wxRect( 0, 0, m_size.x, m_size.y ), wxALIGN_CENTRE_HORIZONTAL | wxALIGN_CENTRE_VERTICAL);
-    }
-
-    SetSize( m_position.x, m_position.y, m_size.x, m_size.y );   // Assumes a nominal 32 x 32 cursor
-
-    // Retrigger the auto timeout
-//    if( m_timeout_sec > 0 ) m_timer_timeout.Start( m_timeout_sec * 1000, wxTIMER_ONE_SHOT );
+	//    If directed, send mouse events up the window family tree,
+	//    until some parent window does NOT call event.Skip()
+	if (m_mmouse_propogate) {
+		event.ResumePropagation(m_mmouse_propogate);
+		event.Skip();
+	}
 }
 
-void RolloverWin::OnPaint( wxPaintEvent& event )
+void RolloverWin::SetBitmap(int rollover)
 {
-    int width, height;
-    GetClientSize( &width, &height );
-    wxPaintDC dc( this );
 
-    if( m_string.Len() ) {
-        wxMemoryDC mdc;
-        mdc.SelectObject( *m_pbm );
-        dc.Blit( 0, 0, width, height, &mdc, 0, 0 );
-    }
+	wxDC* cdc = new wxScreenDC();
+	wxPoint canvasPos = GetParent()->GetScreenPosition();
+
+	wxMemoryDC mdc;
+	delete m_pbm;
+	m_pbm = new wxBitmap(m_size.x, m_size.y, -1);
+	mdc.SelectObject(*m_pbm);
+
+	mdc.Blit(0, 0, m_size.x, m_size.y, cdc, m_position.x + canvasPos.x,
+		m_position.y + canvasPos.y);
+	delete cdc;
+
+	//    ocpnDC dc( mdc );
+
+	RenderRoundedRect(&mdc, 0, 0, m_size.x, m_size.y, 6.0, wxTheColourDatabase->Find(_T("YELLOW")), 172);
+	//   mdc.SetTextForeground( FontMgr::Get().GetFontColor( _("AISRollover") ) );
+
+	if (m_plabelFont && m_plabelFont->IsOk()) {
+
+		//    Draw the text
+		mdc.SetFont(*m_plabelFont);
+
+		mdc.DrawLabel(m_string, wxRect(0, 0, m_size.x, m_size.y), wxALIGN_CENTRE_HORIZONTAL | wxALIGN_CENTRE_VERTICAL);
+	}
+
+	SetSize(m_position.x, m_position.y, m_size.x, m_size.y);   // Assumes a nominal 32 x 32 cursor
+
+	// Retrigger the auto timeout
+	//    if( m_timeout_sec > 0 ) m_timer_timeout.Start( m_timeout_sec * 1000, wxTIMER_ONE_SHOT );
 }
 
-void RolloverWin::SetBestPosition( int x, int y, int off_x, int off_y, int rollover,
-                                   wxSize parent_size )
+void RolloverWin::OnPaint(wxPaintEvent& event)
 {
-    
-    int h, w;
+	int width, height;
+	GetClientSize(&width, &height);
+	wxPaintDC dc(this);
 
-    wxFont dFont = GetFont();
+	if (m_string.Len()) {
+		wxMemoryDC mdc;
+		mdc.SelectObject(*m_pbm);
+		dc.Blit(0, 0, width, height, &mdc, 0, 0);
+	}
+}
 
-    int font_size = wxMax(8, dFont.GetPointSize());
-    m_plabelFont = wxTheFontList->FindOrCreateFont( font_size, dFont.GetFamily(),
-                         dFont.GetStyle(), dFont.GetWeight(), false, dFont.GetFaceName() );
+void RolloverWin::SetBestPosition(int x, int y, int off_x, int off_y, int rollover,
+	wxSize parent_size)
+{
 
-    if(m_plabelFont && m_plabelFont->IsOk()) {
+	int h, w;
+
+	wxFont dFont = GetFont();
+
+	int font_size = wxMax(8, dFont.GetPointSize());
+	m_plabelFont = wxTheFontList->FindOrCreateFont(font_size, dFont.GetFamily(),
+		dFont.GetStyle(), dFont.GetWeight(), false, dFont.GetFaceName());
+
+	if (m_plabelFont && m_plabelFont->IsOk()) {
 #ifdef __WXMAC__
-        wxScreenDC sdc;
-        sdc.GetMultiLineTextExtent(m_string, &w, &h, NULL, m_plabelFont);
+		wxScreenDC sdc;
+		sdc.GetMultiLineTextExtent(m_string, &w, &h, NULL, m_plabelFont);
 #else
-        wxClientDC cdc( GetParent() );
-        cdc.GetMultiLineTextExtent( m_string, &w, &h, NULL, m_plabelFont );
+		wxClientDC cdc(GetParent());
+		cdc.GetMultiLineTextExtent(m_string, &w, &h, NULL, m_plabelFont);
 #endif
-    }
-    else {
-        w = 10;
-        h = 10;
-    }
+	}
+	else {
+		w = 10;
+		h = 10;
+	}
 
-    m_size.x = w + 8;
-    m_size.y = h + 8;
+	m_size.x = w + 8;
+	m_size.y = h + 8;
 
-    int xp, yp;
-//    if( ( x + off_x + m_size.x ) > parent_size.x ) {
-//        xp = x - ( off_x / 2 ) - m_size.x;
-//        xp = wxMax(0, xp);
-//    } else
-        xp = x + off_x;
+	int xp, yp;
+	//    if( ( x + off_x + m_size.x ) > parent_size.x ) {
+	//        xp = x - ( off_x / 2 ) - m_size.x;
+	//        xp = wxMax(0, xp);
+	//    } else
+	xp = x + off_x;
 
-//    if( ( y + off_y + m_size.y ) > parent_size.y ) {
-//        yp = y - ( off_y / 2 ) - m_size.y;
-//    } else
-        yp = y + off_y;
+	//    if( ( y + off_y + m_size.y ) > parent_size.y ) {
+	//        yp = y - ( off_y / 2 ) - m_size.y;
+	//    } else
+	yp = y + off_y;
 
-    SetPosition( wxPoint( xp, yp ) );
+	SetPosition(wxPoint(xp, yp));
 }
 

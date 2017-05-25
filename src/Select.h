@@ -26,6 +26,9 @@
 
 #include "SelectItem.h"
 
+// PPW
+#include "graphics.h" 
+
 #define SELTYPE_UNKNOWN              0x0001
 #define SELTYPE_ROUTEPOINT           0x0002
 #define SELTYPE_ROUTESEGMENT         0x0004
@@ -58,7 +61,8 @@ public:
 //    bool AddSelectableTrackSegment( float slat1, float slon1, float slat2, float slon2,
 //            RoutePoint *pRoutePointAdd1, RoutePoint *pRoutePointAdd2, Route *pRoute );
 
-    SelectItem *FindSelection( float slat, float slon, int fseltype );
+	SelectItem *FindSelection(float slat, float slon, int fseltype);
+	SelectItem *FindAndDrawSelection(float slat, float slon, int fseltype, wxDC *pdc, wxGraphicsContext *gdc);
     SelectableItemList FindSelectionList( float slat, float slon, int fseltype );
 
 //    bool DeleteAllSelectableRouteSegments( Route * );
