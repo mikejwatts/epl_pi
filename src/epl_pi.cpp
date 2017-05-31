@@ -408,7 +408,7 @@ void epl_pi::PopupMenuHandler(wxCommandEvent& event)
 
 	// these 2 used in one of the case blocks
 	int n_brgs = m_brg_array.Count();
-	FixPoint *fix;
+	FixPoint *fix = NULL;
 
 	bool handled = false;
 	switch (event.GetId()) {
@@ -919,9 +919,32 @@ void epl_pi::OnRolloverPopupTimerEvent(wxTimerEvent& event)
 	//----------------------------------------------------------------------
 	//           any other roll-over actions
 	//----------------------------------------------------------------------
+	// DEBUGGING ONLY - create a set of points outlining an area
+	// as an example, take a outline of bearing line first
+	//if (m_brg_array.Count() > 0) {
+	//	wxPoint point;
+	//	GetCanvasPixLL(&g_ovp, &point,
+	//		m_brg_array.Item(0)->GetLatA(),
+	//		m_brg_array.Item(0)->GetLonA());
+
+	//	wxPoint point2;
+	//	GetCanvasPixLL(&g_ovp, &point2,
+	//		m_brg_array.Item(0)->GetLatB(),
+	//		m_brg_array.Item(0)->GetLonB());
+
+	//	m_hl_pt_ary = new wxPoint[4];
+	//	m_hl_pt_ary[0] = wxPoint(point2.x - 40, point2.y - 40);       // top-left
+	//	m_hl_pt_ary[1] = wxPoint(point.x - 40, point.y + 40);
+	//	m_hl_pt_ary[2] = wxPoint(point.x + 40, point.y + 40);
+	//	m_hl_pt_ary[3] = wxPoint(point2.x + 40, point2.y - 40);
+
+	//	n_hl_points = 4;
+
+	//}
+
 	if (!m_bshow_fix_hat && (NULL == m_pRolloverBrg)) {
 
-		m_pFind = m_select->FindSelection(m_cursor_lat, m_cursor_lon, SELTYPE_SEG_GENERIC);
+		m_pFind = m_select->FindSelection(m_cursor_lat, m_cursor_lon, SELTYPE_SEG_GENERIC, &g_ovp);
 
 		if (m_pFind){
 			for (unsigned int i = 0; i < m_brg_array.Count(); i++){
@@ -1060,6 +1083,17 @@ bool epl_pi::RenderGLOverlay(wxGLContext *pcontext, PlugIn_ViewPort *vp)
 * Helper method has common parts of RenderOverlay and RenderGLOverlay.
 *--------------------------------------------------------------------*/
 void epl_pi::RenderOverlay() {
+
+	// DEBUGGING ONLY
+	// render the highlight areas
+	if (n_hl_points > 0) {
+		RenderPolygon(g_pdc, 4, m_hl_pt_ary, wxColour(255, 0, 255), 150);
+	}
+
+	//if (n_hl_points2 > 0) {
+	//	RenderPolygon(g_pdc, 4, m_hl_pt_ary2, wxColour(255, 255, 0), 150);
+	//}
+
 	for (unsigned int i = 0; i < m_brg_array.GetCount(); i++){
 		brg_line *pb = m_brg_array.Item(i);
 		pb->Draw();
@@ -1624,7 +1658,7 @@ void brg_line::Draw(void)
 
 	dwidth = wxMin(4, dwidth);
 	dwidth = wxMax(2, dwidth);
-	dwidth = 20; // PPW line width 
+	//dwidth = 10; // Debugging PPW line width only for non opengl method
 
 	RenderLine(g_pdc, g_gdc, ab.x, ab.y, cd.x, cd.y, m_color, dwidth);
 }

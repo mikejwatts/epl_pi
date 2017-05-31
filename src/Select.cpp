@@ -36,6 +36,11 @@
 #include "ocpn_plugin.h"
 #include "vector2d.h"
 
+#include "epl_pi.h"
+
+wxPoint *m_hl_pt_ary;
+int n_hl_points;
+
 
 Select::Select()
 {
@@ -530,6 +535,7 @@ bool Select::IsSegmentSelected( float a, float b, float c, float d, float slat, 
 {
     double adder = 0.;
 
+	// PPW seems to enter here when bearing line dragged either around screen or end points 
     if( ( c * d ) < 0. ) {
         //    Arrange for points to be increasing longitude, c to d
         double dist, brg;
@@ -553,7 +559,8 @@ bool Select::IsSegmentSelected( float a, float b, float c, float d, float slat, 
     }
 
 //    As a course test, use segment bounding box test
-    if( ( slat >= ( wxMin ( a,b ) - selectRadius ) ) && ( slat <= ( wxMax ( a,b ) + selectRadius ) )
+    if( ( slat >= ( wxMin ( a,b ) - selectRadius ) ) 
+		&& ( slat <= ( wxMax ( a,b ) + selectRadius ) )
         && ( ( slon + adder ) >= ( wxMin ( c,d ) - selectRadius ) )
         && ( ( slon + adder ) <= ( wxMax ( c,d ) + selectRadius ) ) ) {
         //    Use vectors to do hit test....
@@ -574,44 +581,84 @@ bool Select::IsSegmentSelected( float a, float b, float c, float d, float slat, 
         vb.y = bp - ap;
 
         double delta = vGetLengthOfNormal( &va, &vb, &vn );
-        if( fabs( delta ) < ( selectRadius * 1852 * 60 ) ) return true;
+		if (fabs(delta) < (selectRadius * 1852 * 60)) {
+			return true;
+		}
     }
     return false;
 }
 
 void Select::CalcSelectRadius()
 {
-//    selectRadius = pixelRadius / ( cc1->GetCanvasTrueScale() * 1852 * 60 );
+    //selectRadius = pixelRadius / ( cc1->GetCanvasTrueScale() * 1852 * 60 );
 }
 
-SelectItem *Select::FindSelection( float slat, float slon, int fseltype )
+SelectItem *Select::FindSelection(float slat, float slon, int fseltype, PlugIn_ViewPort *vp)
 {
     float a, b, c, d;
-    SelectItem *pFindSel;
+    SelectItem *pFindSel, *returnItem;
+	returnItem = NULL;
 
-    CalcSelectRadius();
+    //CalcSelectRadius();
 
 //    Iterate on the list
     wxSelectableItemListNode *node = pSelectList->GetFirst();
 
-    while( node ) {
+	bool exitLoop = true;
+	if (node){
+		exitLoop = false;
+	}
+
+	//while (node) {
+	while (!exitLoop) {
         pFindSel = node->GetData();
         if( pFindSel->m_seltype == fseltype ) {
             switch( fseltype ){
-                case SELTYPE_POINT_GENERIC:
-                    a = fabs( slat - pFindSel->m_slat );
-                    b = fabs( slon - pFindSel->m_slon );
+				case SELTYPE_POINT_GENERIC:{
+					a = fabs(slat - pFindSel->m_slat);
+					b = fabs(slon - pFindSel->m_slon);
 
-                    if( ( fabs( slat - pFindSel->m_slat ) < selectRadius )
-                            && ( fabs( slon - pFindSel->m_slon ) < selectRadius ) ) goto find_ok;
-                    break;
-                case SELTYPE_SEG_GENERIC: {
+					if ((fabs(slat - pFindSel->m_slat) < selectRadius) && (fabs(slon - pFindSel->m_slon) < selectRadius))
+					{
+						/*goto find_ok;*/	//goto find_ok;  //PPW removed GOTO
+						returnItem = pFindSel;
+					}
+					break;
+				}
+                case SELTYPE_SEG_GENERIC: 
+				{
                     a = pFindSel->m_slat;
                     b = pFindSel->m_slat2;
                     c = pFindSel->m_slon;
                     d = pFindSel->m_slon2;
 
-                    if( IsSegmentSelected( a, b, c, d, slat, slon ) ) goto find_ok;
+					// DEBUGGING ONLY
+					if (vp){
+						wxPoint point;
+						GetCanvasPixLL(vp, &point,
+							pFindSel->m_slat,
+							pFindSel->m_slon);
+
+						wxPoint point2;
+						GetCanvasPixLL(vp, &point2,
+							pFindSel->m_slat2,
+							pFindSel->m_slon2);
+
+						m_hl_pt_ary = new wxPoint[4];
+						m_hl_pt_ary[0] = wxPoint(point2.x - 20, point2.y);       // top-left
+						m_hl_pt_ary[1] = wxPoint(point.x - 20, point.y);	// bottom-left
+						m_hl_pt_ary[2] = wxPoint(point.x + 20, point.y);	//bottom-right
+						m_hl_pt_ary[3] = wxPoint(point2.x + 20, point2.y);	//top-right
+
+						n_hl_points = 4;
+					}
+					// deBug code over
+					if (IsSegmentSelected(a, b, c, d, slat, slon)) 
+					{
+						//goto find_ok;  //PPW removed GOTO
+						returnItem = pFindSel;
+						exitLoop = true;
+					}
                     break;
                 }
                 default:
@@ -620,69 +667,14 @@ SelectItem *Select::FindSelection( float slat, float slon, int fseltype )
         }
 
         node = node->GetNext();
+		if (!node){
+			exitLoop = true;
+		}
     }
 
-    return NULL;
-    find_ok: return pFindSel;
-}
-
-// PPW Experiment in bug findingtrying to draw bounding box around rollover need to stop lat and longs 
-// for all brg lines for use later when rendering
-SelectItem *Select::FindAndDrawSelection(float slat, float slon, int fseltype, wxDC *pdc, wxGraphicsContext *gdc)
-{
-	float a, b, c, d;
-	SelectItem *pFindSel;
-
-	//CalcSelectRadius();
-
-	//    Iterate on the list
-	wxSelectableItemListNode *node = pSelectList->GetFirst();
-
-
-	wxColor bob = wxColour(0, 0, 255);
-
-	while (node) {
-		pFindSel = node->GetData();
-		if (pFindSel->m_seltype == fseltype) {
-			switch (fseltype){
-			case SELTYPE_POINT_GENERIC:
-			{
-				a = fabs(slat - pFindSel->m_slat);
-				b = fabs(slon - pFindSel->m_slon);
-
-				if ((fabs(slat - pFindSel->m_slat) < selectRadius)
-					&& (fabs(slon - pFindSel->m_slon) < selectRadius)) goto find_ok;
-				break;
-			}
-			case SELTYPE_SEG_GENERIC: {
-				a = pFindSel->m_slat;
-				b = pFindSel->m_slat2;
-				c = pFindSel->m_slon;
-				d = pFindSel->m_slon2;
-
-
-				//  Calculate the points
-				wxPoint ab, cd;
-			/*	GetCanvasPixLL(vp, &ab, pFindSel->m_slat, pFindSel->m_slon);
-				GetCanvasPixLL(vp, &cd, pFindSel->m_slat2, pFindSel->m_slon2);*/
-
-				RenderRoundedRect(pdc, 20, 20, 40, 40, 2, bob, 255);
-				RenderLine(pdc, gdc, 1426, 942, 1324, 28, bob, 20);
-
-
-				if (IsSegmentSelected(a, b, c, d, slat, slon)) goto find_ok;
-				break;
-			}
-			default:
-				break;
-			}
-		}
-
-		node = node->GetNext();
-	}
-
-	return NULL;
-find_ok: return pFindSel;
+    /*return NULL;
+    find_ok: return pFindSel;*/  //PPW removed GOTO
+	return returnItem;
 }
 
 bool Select::IsSelectableSegmentSelected( float slat, float slon, SelectItem *pFindSel )
@@ -710,7 +702,7 @@ SelectableItemList Select::FindSelectionList( float slat, float slon, int fselty
 
 //    Iterate on the list
     wxSelectableItemListNode *node = pSelectList->GetFirst();
-
+	// PPW Bad practice fall through in case statement Refactor later?
     while( node ) {
         pFindSel = node->GetData();
         if( pFindSel->m_seltype == fseltype ) {
@@ -724,7 +716,7 @@ SelectableItemList Select::FindSelectionList( float slat, float slon, int fselty
                         ret_list.Append( pFindSel );
                     }
                     break;
-                case SELTYPE_ROUTESEGMENT:
+				case SELTYPE_ROUTESEGMENT: 
                 case SELTYPE_TRACKSEGMENT: {
                     a = pFindSel->m_slat;
                     b = pFindSel->m_slat2;

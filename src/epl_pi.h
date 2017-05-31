@@ -106,6 +106,9 @@ WX_DECLARE_OBJARRAY(FixPoint *, ListOfFixes);
 //    The PlugIn Class Definition
 //----------------------------------------------------------------------------------------------------------
 
+// FOR DEBUGGING ONLY - array of points defining the select regions
+extern wxPoint *m_hl_pt_ary;
+extern int n_hl_points;
 
 class epl_pi : public wxTimer, opencpn_plugin_113
 {
@@ -185,7 +188,6 @@ private:
 	Select               *m_select;
 
 	ArrayOfBrgLines      m_brg_array;
-
 
 	/* fix from the currently hightlighted cocked-hat region - only
 	valid if m_bshow_fix_hat									  */

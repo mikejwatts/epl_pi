@@ -112,6 +112,9 @@ void GLDrawLine(wxCoord x1, wxCoord y1, wxCoord x2, wxCoord y2)
 
 		//      Assume color and line width are preset
 
+		// PPW line width is set at maximum value of 10.0 can only go thinner use:
+		// e.g. glLineWidth(5.0); 
+
 		{
 
 			//           glDisable( GL_MULTISAMPLE );

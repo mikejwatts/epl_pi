@@ -25,6 +25,7 @@
 #define __SELECT_H__
 
 #include "SelectItem.h"
+#include "ocpn_plugin.h"
 
 // PPW
 #include "graphics.h" 
@@ -61,9 +62,8 @@ public:
 //    bool AddSelectableTrackSegment( float slat1, float slon1, float slat2, float slon2,
 //            RoutePoint *pRoutePointAdd1, RoutePoint *pRoutePointAdd2, Route *pRoute );
 
-	SelectItem *FindSelection(float slat, float slon, int fseltype);
-	SelectItem *FindAndDrawSelection(float slat, float slon, int fseltype, wxDC *pdc, wxGraphicsContext *gdc);
-    SelectableItemList FindSelectionList( float slat, float slon, int fseltype );
+	SelectItem *FindSelection(float slat, float slon, int fseltype, PlugIn_ViewPort *vp = NULL);
+	SelectableItemList FindSelectionList( float slat, float slon, int fseltype );
 
 //    bool DeleteAllSelectableRouteSegments( Route * );
 //    bool DeleteAllSelectableTrackSegments( Route * );
