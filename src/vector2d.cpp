@@ -118,11 +118,13 @@ double vVectorMagnitude( pVector2D v0 )
 
 
 int CCW(MyFlPoint p0, MyFlPoint p1, MyFlPoint p2) {
-    float dx1, dx2 ;
-    float dy1, dy2 ;
-    
-    dx1 = p1.x - p0.x ; dx2 = p2.x - p0.x ;
-    dy1 = p1.y - p0.y ; dy2 = p2.y - p0.y ;
+	float dx1, dx2;
+	float dy1, dy2;
+
+	dx1 = float(p1.x - p0.x);
+	dx2 = float(p2.x - p0.x);
+	dy1 = float(p1.y - p0.y);
+	dy2 = float(p2.y - p0.y);
     
     /* This is basically a slope comparison: we don't do divisions because
      * 

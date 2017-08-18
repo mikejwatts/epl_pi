@@ -29,24 +29,21 @@
 #endif //precompiled headers
 
 #include "Select.h"
-//#include "georef.h"
-//#include "vector2D.h"
-//#include "navutil.h"
-//#include "chcanv.h"
 #include "ocpn_plugin.h"
 #include "vector2d.h"
+
+#include "epl_pi.h"
+
+wxPoint *m_hl_pt_ary;
+int n_hl_points;
 
 
 Select::Select()
 {
     pSelectList = new SelectableItemList;
-    pixelRadius = 8;
-//    int w,h;
-//    wxDisplaySize( &w, &h );
-//    if( h > 800 ) pixelRadius = 10;
-//    if( h > 1024 ) pixelRadius = 12;
-    
+    //pixelRadius = 8;
 }
+
 
 Select::~Select()
 {
@@ -56,226 +53,106 @@ Select::~Select()
 
 }
 
-#if 0
-bool Select::AddSelectableRoutePoint( float slat, float slon, RoutePoint *pRoutePointAdd )
-{
-    SelectItem *pSelItem = new SelectItem;
-    pSelItem->m_slat = slat;
-    pSelItem->m_slon = slon;
-    pSelItem->m_seltype = SELTYPE_ROUTEPOINT;
-    pSelItem->m_bIsSelected = false;
-    pSelItem->m_pData1 = pRoutePointAdd;
 
-    wxSelectableItemListNode *node;
-    
-    if( pRoutePointAdd->m_bIsInLayer )
-        node = pSelectList->Append( pSelItem );
-    else
-        node = pSelectList->Insert( pSelItem );
+/** Determines the ( minimum ) distance from a point po to a line defined by
+ * p1 & p2 in cartesian co-ordinates.  Typical use is to find, in pixels, the
+ * distance to a line defined in pixel co-ords, which returns the distance in
+ * pixels.
+ *
+ * @param p1x               point 1 x-co-ordinate
+ * @param p1y               point 1 y-co-ordinate
+ * @param p2x               point 2 x-co-ordinate
+ * @param p2y               point 2 y-co-ordinate
+ * @param pox               test point x-co-ordinate
+ * @param poy               test point y-co-ordinate
+ *
+ * @return                  distance from the point to the line in the given
+ *                          units
+ *
+ * @see DistanceToLineLL    Lat / Long version
+ */
+float Select::DistanceToLine(float p1x, float p1y, float p2x, float p2y,
+        float pox, float poy) {
 
-    pRoutePointAdd->SetSelectNode(node);
-    
-    return true;
-}
+    // taken from https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
+    // which explains this nicely: the denominator is the distance between P1 &
+    // P2 and the numerator is the area of the triangle p1, p2, po
+    // that uses the area of a triangle formula = base * height perpendicular to
+    // the base
 
-bool Select::AddSelectableRouteSegment( float slat1, float slon1, float slat2, float slon2,
-        RoutePoint *pRoutePointAdd1, RoutePoint *pRoutePointAdd2, Route *pRoute )
-{
-    SelectItem *pSelItem = new SelectItem;
-    pSelItem->m_slat = slat1;
-    pSelItem->m_slon = slon1;
-    pSelItem->m_slat2 = slat2;
-    pSelItem->m_slon2 = slon2;
-    pSelItem->m_seltype = SELTYPE_ROUTESEGMENT;
-    pSelItem->m_bIsSelected = false;
-    pSelItem->m_pData1 = pRoutePointAdd1;
-    pSelItem->m_pData2 = pRoutePointAdd2;
-    pSelItem->m_pData3 = pRoute;
-
-    if( pRoute->m_bIsInLayer ) pSelectList->Append( pSelItem );
-    else
-        pSelectList->Insert( pSelItem );
-
-    return true;
-}
-
-bool Select::DeleteAllSelectableRouteSegments( Route *pr )
-{
-    SelectItem *pFindSel;
-
-//    Iterate on the select list
-    wxSelectableItemListNode *node = pSelectList->GetFirst();
-
-    while( node ) {
-        pFindSel = node->GetData();
-        if( pFindSel->m_seltype == SELTYPE_ROUTESEGMENT ) {
-
-//                  RoutePoint *ps1 = (RoutePoint *)pFindSel->m_pData1;
-//                  RoutePoint *ps2 = (RoutePoint *)pFindSel->m_pData2;
-
-            if( (Route *) pFindSel->m_pData3 == pr ) {
-                delete pFindSel;
-                pSelectList->DeleteNode( node );   //delete node;
-
-                node = pSelectList->GetFirst();     // reset the top node
-
-                goto got_next_outer_node;
-            }
-        }
-
-        node = node->GetNext();
-        got_next_outer_node: continue;
+    // but first, check we have a line and not a point!
+    if (p1x == p2x && p1y == p2y) {
+        // it's a point!  return this distance between this and po
+        float dy = poy - p1y;
+        float dx = pox - p1x;
+        return sqrt(dy * dy + dx * dx);
     }
 
-    return true;
-}
+    // The article above assumes an inifinitely-long line which passes through
+    // 2 points.  We therefore need to deal with non-inifinite lines - look for
+    // the angle p1,p2,po or p2,p1,po being > 90.
+    float ldy = p2y - p1y;
+    float ldx = p2x - p1x;
+    float ldyo1 = poy - p1y;
+    float ldxo1 = pox - p1x;
+    float ldyo2 = poy - p2y;
+    float ldxo2 = pox - p2x;
 
-bool Select::DeleteAllSelectableRoutePoints( Route *pr )
-{
-    SelectItem *pFindSel;
-
-//    Iterate on the select list
-    wxSelectableItemListNode *node = pSelectList->GetFirst();
-
-    while( node ) {
-        pFindSel = node->GetData();
-        if( pFindSel->m_seltype == SELTYPE_ROUTEPOINT ) {
-            RoutePoint *ps = (RoutePoint *) pFindSel->m_pData1;
-
-            //    inner loop iterates on the route's point list
-            wxRoutePointListNode *pnode = ( pr->pRoutePointList )->GetFirst();
-            while( pnode ) {
-                RoutePoint *prp = pnode->GetData();
-
-                if( prp == ps ) {
-                    delete pFindSel;
-                    pSelectList->DeleteNode( node );   //delete node;
-                    prp->SetSelectNode( NULL );
-                    
-                    node = pSelectList->GetFirst();
-
-                    goto got_next_outer_node;
-                }
-                pnode = pnode->GetNext();
-            }
-        }
-
-        node = node->GetNext();
-got_next_outer_node: continue;
-    }
-    return true;
-}
-
-bool Select::AddAllSelectableRoutePoints( Route *pr )
-{
-    if( pr->pRoutePointList->GetCount() ) {
-        wxRoutePointListNode *node = ( pr->pRoutePointList )->GetFirst();
-
-        while( node ) {
-            RoutePoint *prp = node->GetData();
-            AddSelectableRoutePoint( prp->m_lat, prp->m_lon, prp );
-            node = node->GetNext();
-        }
-        return true;
-    } else
-        return false;
-}
-
-bool Select::AddAllSelectableRouteSegments( Route *pr )
-{
-    wxPoint rpt, rptn;
-    float slat1, slon1, slat2, slon2;
-
-    if( pr->pRoutePointList->GetCount() ) {
-        wxRoutePointListNode *node = ( pr->pRoutePointList )->GetFirst();
-
-        RoutePoint *prp0 = node->GetData();
-        slat1 = prp0->m_lat;
-        slon1 = prp0->m_lon;
-
-        node = node->GetNext();
-
-        while( node ) {
-            RoutePoint *prp = node->GetData();
-            slat2 = prp->m_lat;
-            slon2 = prp->m_lon;
-
-            AddSelectableRouteSegment( slat1, slon1, slat2, slon2, prp0, prp, pr );
-
-            slat1 = slat2;
-            slon1 = slon2;
-            prp0 = prp;
-
-            node = node->GetNext();
-        }
-        return true;
-    } else
-        return false;
-}
-
-bool Select::AddAllSelectableTrackSegments( Route *pr )
-{
-    wxPoint rpt, rptn;
-    float slat1, slon1, slat2, slon2;
-
-    if( pr->pRoutePointList->GetCount() ) {
-        wxRoutePointListNode *node = ( pr->pRoutePointList )->GetFirst();
-
-        RoutePoint *prp0 = node->GetData();
-        slat1 = prp0->m_lat;
-        slon1 = prp0->m_lon;
-
-        node = node->GetNext();
-
-        while( node ) {
-            RoutePoint *prp = node->GetData();
-            slat2 = prp->m_lat;
-            slon2 = prp->m_lon;
-
-            AddSelectableTrackSegment( slat1, slon1, slat2, slon2, prp0, prp, pr );
-
-            slat1 = slat2;
-            slon1 = slon2;
-            prp0 = prp;
-
-            node = node->GetNext();
-        }
-        return true;
-    } else
-        return false;
-}
-
-bool Select::UpdateSelectableRouteSegments( RoutePoint *prp )
-{
-    SelectItem *pFindSel;
-    bool ret = false;
-
-//    Iterate on the select list
-    wxSelectableItemListNode *node = pSelectList->GetFirst();
-
-    while( node ) {
-        pFindSel = node->GetData();
-        if( pFindSel->m_seltype == SELTYPE_ROUTESEGMENT ) {
-            if( pFindSel->m_pData1 == prp ) {
-                pFindSel->m_slat = prp->m_lat;
-                pFindSel->m_slon = prp->m_lon;
-                ret = true;
-                ;
-            }
-
-            else
-                if( pFindSel->m_pData2 == prp ) {
-                    pFindSel->m_slat2 = prp->m_lat;
-                    pFindSel->m_slon2 = prp->m_lon;
-                    ret = true;
-                }
-        }
-        node = node->GetNext();
+    // b is base line, angA is angle p2,p1,po, angC is p1,p2,po: cosine rule
+    float a = sqrt(ldyo2 * ldyo2 + ldxo2 * ldxo2);
+    float b = sqrt(ldy * ldy + ldx * ldx);
+    float c = sqrt(ldyo1 * ldyo1 + ldxo1 * ldxo1);
+    float angA = acos((b * b + c * c - a * a) / (2 * b * c));
+    if (angA > PI / 2.0) {
+        // nearer to p1 than the rest of the line
+        return c;
     }
 
-    return ret;
+    float angC = acos((a * a + b * b - c * c) / (2 * a * b));
+    if (angC > PI / 2.0) {
+        // nearer to p2 than the rest of the line
+        return a;
+    }
+
+    return abs(ldy * pox - ldx * poy + p2x * p1y - p2y * p1x) / b;
 }
-#endif
+
+
+/** Determines the ( minimum ) distance from a point po to a line defined by
+ * p1 & p2 in lat & long co-ordinates.  Typical use is to find the distance to
+ * a line defined in lat & long co-ords in NM.  This method assumes the line is
+ * short enough to ignore any great-circle computation or other spherical-based
+ * factors.
+ *
+ * @param p1Lat             point 1 latitude
+ * @param p1Lon             point 1 longitude
+ * @param p2Lat             point 2 latitude
+ * @param p2Lon             point 2 longitude
+ * @param poLat             test point latitude
+ * @param poLat             test point longitude
+ *
+ * @return                  distance from the point to the line in the NM
+ *
+ * @see DistanceToLine      x / y version
+ */
+float Select::DistanceToLineLL(float p1Lat, float p1Lon, float p2Lat, float p2Lon,
+        float poLat, float poLon) {
+
+    // this uses DistanceToLine to compute the distance in NM by first
+    // converting lat & long to cartesian co-ordinates, in NM, with the
+    // origin at p1
+    float xFactor = 60 * cos(p1Lat * PI / 180.0);  // Simon Cowell?
+    float yFactor = 60;                // by definitiion
+
+    float p2x = (p2Lon - p1Lon) * xFactor;
+    float p2y = (p2Lat - p1Lat) * yFactor;
+    float pox = (poLon - p1Lon) * xFactor;
+    float poy = (poLat - p1Lat) * yFactor;
+
+    return DistanceToLine(0, 0, p2x, p2y, pox, poy);
+}
+
+
 SelectItem *Select::AddSelectablePoint( float slat, float slon, const void *pdata, int fseltype, int UserData )
 {
     SelectItem *pSelItem = new SelectItem;
@@ -313,27 +190,6 @@ bool Select::AddSelectableSegment( float slat1, float slon1, float slat2, float 
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-bool Select::DeleteAllPoints( void )
-{
-    pSelectList->DeleteContents( true );
-    pSelectList->Clear();
-    return true;
-}
-*/
-
 bool Select::DeleteSelectablePoint( void *pdata, int SeltypeToDelete, int UserData )
 {
     SelectItem *pFindSel;
@@ -356,6 +212,7 @@ bool Select::DeleteSelectablePoint( void *pdata, int SeltypeToDelete, int UserDa
     }
     return false;
 }
+
 
 bool Select::DeleteSelectableSegment( void *pdata, int SeltypeToDelete, int UserData )
 {
@@ -409,29 +266,7 @@ bool Select::DeleteAllSelectableTypePoints( int SeltypeToDelete )
     return true;
 }
 
-#if 0
-bool Select::DeleteSelectableRoutePoint( RoutePoint *prp )
-{
-    
-    if( NULL != prp ) {
-        wxSelectableItemListNode *node = (wxSelectableItemListNode *)prp->GetSelectNode();
-        if(node){
-            SelectItem *pFindSel = node->GetData();
-            if(pFindSel){
-                delete pFindSel;
-                delete node;            // automatically removes from list
-                prp->SetSelectNode( NULL );
-                return true;
-            }
-        }
-        else
-            return DeleteSelectablePoint( prp, SELTYPE_ROUTEPOINT );
-        
-    }
-    return false;
-}
 
-#endif
 bool Select::ModifySelectablePoint( float lat, float lon, void *data, int SeltypeToModify )
 {
     SelectItem *pFindSel;
@@ -453,165 +288,103 @@ bool Select::ModifySelectablePoint( float lat, float lon, void *data, int Seltyp
     }
     return false;
 }
-#if 0
-bool Select::AddSelectableTrackSegment( float slat1, float slon1, float slat2, float slon2,
-        RoutePoint *pRoutePointAdd1, RoutePoint *pRoutePointAdd2, Route *pRoute )
-{
-    SelectItem *pSelItem = new SelectItem;
-    pSelItem->m_slat = slat1;
-    pSelItem->m_slon = slon1;
-    pSelItem->m_slat2 = slat2;
-    pSelItem->m_slon2 = slon2;
-    pSelItem->m_seltype = SELTYPE_TRACKSEGMENT;
-    pSelItem->m_bIsSelected = false;
-    pSelItem->m_pData1 = pRoutePointAdd1;
-    pSelItem->m_pData2 = pRoutePointAdd2;
-    pSelItem->m_pData3 = pRoute;
 
-    if( pRoute->m_bIsInLayer ) pSelectList->Append( pSelItem );
-    else
-        pSelectList->Insert( pSelItem );
 
-    return true;
+/** Returns true if the given pointer position, po, is within a pre-defined
+ * distance ( set by selectRadius ) of the segment defined by the line p1,p2.
+ *
+ * @param p1Lat             end 1 latitude
+ * @param p1Lon             end 1 longitude
+ * @param p2Lat             end 2 latitude
+ * @param p2Lon             end 2 longitude
+ * @param poLat             pointer latitude
+ * @param poLat             pointer longitude
+ *
+ * @returns                 true if close
+ */
+bool Select::IsSegmentSelected(float p1Lat, float p1Lon,
+            float p2Lat, float p2Lon,
+            float poLat, float poLon) {
+
+	//if (selectRadius_NM < 0.00001){
+	//	wxMessageBox("We have a select radius problem");
+	//}
+
+    // the return from DistanceToLineLL is in NM
+	return DistanceToLineLL(p1Lat, p1Lon, p2Lat, p2Lon, poLat, poLon)
+		< selectRadius_NM;
 }
 
-bool Select::DeleteAllSelectableTrackSegments( Route *pr )
-{
-    SelectItem *pFindSel;
 
-//    Iterate on the select list
-    wxSelectableItemListNode *node = pSelectList->GetFirst();
-
-    while( node ) {
-        pFindSel = node->GetData();
-        if( pFindSel->m_seltype == SELTYPE_TRACKSEGMENT ) {
-
-            if( (Route *) pFindSel->m_pData3 == pr ) {
-                delete pFindSel;
-                pSelectList->DeleteNode( node );   //delete node;
-
-                node = pSelectList->GetFirst();     // reset the top node
-                goto got_next_outer_node;
-            }
-        }
-        node = node->GetNext();
-        got_next_outer_node: continue;
-    }
-    return true;
-}
-
-bool Select::DeletePointSelectableTrackSegments( RoutePoint *pr )
-{
-    SelectItem *pFindSel;
-
-//    Iterate on the select list
-    wxSelectableItemListNode *node = pSelectList->GetFirst();
-
-    while( node ) {
-        pFindSel = node->GetData();
-        if( pFindSel->m_seltype == SELTYPE_TRACKSEGMENT ) {
-
-            if( (RoutePoint *) pFindSel->m_pData1 == pr || (RoutePoint *) pFindSel->m_pData2 == pr ) {
-                delete pFindSel;
-                pSelectList->DeleteNode( node );   //delete node;
-
-                node = pSelectList->GetFirst();     // reset the top node
-                goto got_next_outer_node;
-            }
-        }
-        node = node->GetNext();
-        got_next_outer_node: continue;
-    }
-    return true;
-}
-#endif
-
-bool Select::IsSegmentSelected( float a, float b, float c, float d, float slat, float slon )
-{
-    double adder = 0.;
-
-    if( ( c * d ) < 0. ) {
-        //    Arrange for points to be increasing longitude, c to d
-        double dist, brg;
-        DistanceBearingMercator_Plugin( a, c, b, d, &brg, &dist );
-        
-        if( brg < 180. )             // swap points?
-                {
-            double tmp;
-            tmp = c;
-            c = d;
-            d = tmp;
-            tmp = a;
-            a = b;
-            b = tmp;
-        }
-        if( d < 0. )     // idl?
-                {
-            d += 360.;
-            if( slon < 0. ) adder = 360.;
-        }
-    }
-
-//    As a course test, use segment bounding box test
-    if( ( slat >= ( wxMin ( a,b ) - selectRadius ) ) && ( slat <= ( wxMax ( a,b ) + selectRadius ) )
-        && ( ( slon + adder ) >= ( wxMin ( c,d ) - selectRadius ) )
-        && ( ( slon + adder ) <= ( wxMax ( c,d ) + selectRadius ) ) ) {
-        //    Use vectors to do hit test....
-        vector2D va, vb, vn;
-
-        //    Assuming a Mercator projection
-        double ap, cp;
-        toSM_Plugin( a, c, 0., 0., &cp, &ap );
-    
-        double bp, dp;
-        toSM_Plugin( b, d, 0., 0., &dp, &bp );
-        double slatp, slonp;
-        toSM_Plugin( slat, slon + adder, 0., 0., &slonp, &slatp );
-
-        va.x = slonp - cp;
-        va.y = slatp - ap;
-        vb.x = dp - cp;
-        vb.y = bp - ap;
-
-        double delta = vGetLengthOfNormal( &va, &vb, &vn );
-        if( fabs( delta ) < ( selectRadius * 1852 * 60 ) ) return true;
-    }
-    return false;
-}
-
-void Select::CalcSelectRadius()
-{
-//    selectRadius = pixelRadius / ( cc1->GetCanvasTrueScale() * 1852 * 60 );
-}
-
-SelectItem *Select::FindSelection( float slat, float slon, int fseltype )
+SelectItem *Select::FindSelection(float slat, float slon, int fseltype, PlugIn_ViewPort *vp)
 {
     float a, b, c, d;
-    SelectItem *pFindSel;
+    SelectItem *pFindSel, *returnItem;
+	returnItem = NULL;
 
-    CalcSelectRadius();
 
 //    Iterate on the list
     wxSelectableItemListNode *node = pSelectList->GetFirst();
 
-    while( node ) {
+	bool exitLoop = true;
+	if (node){
+		exitLoop = false;
+	}
+
+	//while (node) {
+	while (!exitLoop) {
         pFindSel = node->GetData();
         if( pFindSel->m_seltype == fseltype ) {
             switch( fseltype ){
-                case SELTYPE_POINT_GENERIC:
-                    a = fabs( slat - pFindSel->m_slat );
-                    b = fabs( slon - pFindSel->m_slon );
+				case SELTYPE_POINT_GENERIC:{
+                    float xFactor = 60 * cos(slat * PI / 180.0);
+                    float yFactor = 60;
 
-                    if( ( fabs( slat - pFindSel->m_slat ) < selectRadius )
-                            && ( fabs( slon - pFindSel->m_slon ) < selectRadius ) ) goto find_ok;
-                    break;
-                case SELTYPE_SEG_GENERIC: {
+					a = fabs(slat - pFindSel->m_slat);
+					b = fabs(slon - pFindSel->m_slon);
+
+					if ((fabs(slat - pFindSel->m_slat) < selectRadius_NM / xFactor)  // PPW this needs work * factor selects everything / factor region too small
+						&& (fabs(slon - pFindSel->m_slon) < selectRadius_NM / yFactor))
+					{
+						/*goto find_ok;*/	//goto find_ok;  //PPW removed GOTO
+						returnItem = pFindSel;
+					}
+					break;
+				}
+                case SELTYPE_SEG_GENERIC: 
+				{
                     a = pFindSel->m_slat;
-                    b = pFindSel->m_slat2;
-                    c = pFindSel->m_slon;
+                    b = pFindSel->m_slon;
+                    c = pFindSel->m_slat2;
                     d = pFindSel->m_slon2;
 
-                    if( IsSegmentSelected( a, b, c, d, slat, slon ) ) goto find_ok;
+					//// DEBUGGING ONLY
+					//if (vp){
+					//	wxPoint point;
+					//	GetCanvasPixLL(vp, &point,
+					//		pFindSel->m_slat,
+					//		pFindSel->m_slon);
+
+					//	wxPoint point2;
+					//	GetCanvasPixLL(vp, &point2,
+					//		pFindSel->m_slat2,
+					//		pFindSel->m_slon2);
+
+					//	m_hl_pt_ary = new wxPoint[4];
+					//	m_hl_pt_ary[0] = wxPoint(point2.x - 20, point2.y);       // top-left
+					//	m_hl_pt_ary[1] = wxPoint(point.x - 20, point.y);	// bottom-left
+					//	m_hl_pt_ary[2] = wxPoint(point.x + 20, point.y);	//bottom-right
+					//	m_hl_pt_ary[3] = wxPoint(point2.x + 20, point2.y);	//top-right
+
+					//	n_hl_points = 4;
+					//}
+					// deBug code over
+					if (IsSegmentSelected(a, b, c, d, slat, slon)) 
+					{
+						//goto find_ok;  //PPW removed GOTO
+						returnItem = pFindSel;
+						exitLoop = true;
+					}
                     break;
                 }
                 default:
@@ -620,26 +393,30 @@ SelectItem *Select::FindSelection( float slat, float slon, int fseltype )
         }
 
         node = node->GetNext();
+		if (!node){
+			exitLoop = true;
+		}
     }
 
-    return NULL;
-    find_ok: return pFindSel;
+    /*return NULL;
+    find_ok: return pFindSel;*/  //PPW removed GOTO
+	return returnItem;
 }
+
 
 bool Select::IsSelectableSegmentSelected( float slat, float slon, SelectItem *pFindSel )
 {
     if(!pFindSel)
         return false;
     
-    CalcSelectRadius();
-
     float a = pFindSel->m_slat;
-    float b = pFindSel->m_slat2;
-    float c = pFindSel->m_slon;
+    float b = pFindSel->m_slon;
+    float c = pFindSel->m_slat2;
     float d = pFindSel->m_slon2;
 
     return IsSegmentSelected( a, b, c, d, slat, slon );
 }
+
 
 SelectableItemList Select::FindSelectionList( float slat, float slon, int fseltype )
 {
@@ -647,11 +424,9 @@ SelectableItemList Select::FindSelectionList( float slat, float slon, int fselty
     SelectItem *pFindSel;
     SelectableItemList ret_list;
 
-    CalcSelectRadius();
-
 //    Iterate on the list
     wxSelectableItemListNode *node = pSelectList->GetFirst();
-
+	// PPW Bad practice fall through in case statement Refactor later?
     while( node ) {
         pFindSel = node->GetData();
         if( pFindSel->m_seltype == fseltype ) {
@@ -659,17 +434,21 @@ SelectableItemList Select::FindSelectionList( float slat, float slon, int fselty
                 case SELTYPE_ROUTEPOINT:
                 case SELTYPE_TIDEPOINT:
                 case SELTYPE_CURRENTPOINT:
-                case SELTYPE_AISTARGET:
-                    if( ( fabs( slat - pFindSel->m_slat ) < selectRadius )
-                            && ( fabs( slon - pFindSel->m_slon ) < selectRadius ) ) {
-                        ret_list.Append( pFindSel );
-                    }
-                    break;
-                case SELTYPE_ROUTESEGMENT:
+				case SELTYPE_AISTARGET:{
+					float xFactor = 60 * cos(slat * PI / 180.0);
+					float yFactor = 60;
+
+					if ((fabs(slat - pFindSel->m_slat) < selectRadius_NM / xFactor)	// PPW this needs work * factor selects everything / factor region too small
+						&& (fabs(slon - pFindSel->m_slon) < selectRadius_NM / yFactor)) {
+						ret_list.Append(pFindSel);
+					}
+					break;
+				}
+				case SELTYPE_ROUTESEGMENT: 
                 case SELTYPE_TRACKSEGMENT: {
                     a = pFindSel->m_slat;
-                    b = pFindSel->m_slat2;
-                    c = pFindSel->m_slon;
+                    b = pFindSel->m_slon;
+                    c = pFindSel->m_slat2;
                     d = pFindSel->m_slon2;
 
                     if( IsSegmentSelected( a, b, c, d, slat, slon ) ) ret_list.Append( pFindSel );

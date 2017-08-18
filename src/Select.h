@@ -25,6 +25,10 @@
 #define __SELECT_H__
 
 #include "SelectItem.h"
+#include "ocpn_plugin.h"
+
+// PPW
+#include "graphics.h" 
 
 #define SELTYPE_UNKNOWN              0x0001
 #define SELTYPE_ROUTEPOINT           0x0002
@@ -40,43 +44,27 @@
 #define SELTYPE_SEG_GENERIC          0x0400
 
 
-
-
 class Select
 {
 public:
     Select();
     ~Select();
 
-    void SetSelectPixelRadius(int radius){ pixelRadius = radius; }
-    void SetSelectLLRadius(double radius){ selectRadius = radius; }
+    //void SetSelectPixelRadius(int radius){ pixelRadius = radius; }
+    void SetSelectLLRadius(float radius){ selectRadius_NM = radius; }
     
-//    bool AddSelectableRoutePoint( float slat, float slon, RoutePoint *pRoutePointAdd );
-//    bool AddSelectableRouteSegment( float slat1, float slon1, float slat2, float slon2,
-//            RoutePoint *pRoutePointAdd1, RoutePoint *pRoutePointAdd2, Route *pRoute );
+	SelectItem *FindSelection(float slat, float slon, int fseltype, PlugIn_ViewPort *vp = NULL);
+	SelectableItemList FindSelectionList( float slat, float slon, int fseltype );
 
-//    bool AddSelectableTrackSegment( float slat1, float slon1, float slat2, float slon2,
-//            RoutePoint *pRoutePointAdd1, RoutePoint *pRoutePointAdd2, Route *pRoute );
-
-    SelectItem *FindSelection( float slat, float slon, int fseltype );
-    SelectableItemList FindSelectionList( float slat, float slon, int fseltype );
-
-//    bool DeleteAllSelectableRouteSegments( Route * );
-//    bool DeleteAllSelectableTrackSegments( Route * );
-//    bool DeleteAllSelectableRoutePoints( Route * );
-//    bool AddAllSelectableRouteSegments( Route *pr );
-//    bool AddAllSelectableTrackSegments( Route *pr );
-//    bool AddAllSelectableRoutePoints( Route *pr );
-//    bool UpdateSelectableRouteSegments( RoutePoint *prp );
-//    bool DeletePointSelectableTrackSegments( RoutePoint *pr );
-    bool IsSegmentSelected( float a, float b, float c, float d, float slat, float slon );
+    bool IsSegmentSelected(float p1Lat, float p1Lon,
+            float p2Lat, float p2Lon,
+            float poLat, float poLon);
     bool IsSelectableSegmentSelected( float slat, float slon, SelectItem *pFindSel );
 
     //    Generic Point/Segment Support
     SelectItem *AddSelectablePoint(float slat, float slon, const void *data, int fseltype, int UserData);
     bool AddSelectableSegment( float slat1, float slon1, float slat2, float slon2,
                                        const void *pdata, int UserData );
-    
     
     
     bool DeleteAllPoints( void );
@@ -88,21 +76,25 @@ public:
     //    Delete all selectable points in list by type
     bool DeleteAllSelectableTypePoints( int SeltypeToDelete );
 
-//    bool DeleteSelectableRoutePoint( RoutePoint *prp );
+    // distance of point po to line p1,p2
+    static float DistanceToLine(float p1x, float p1y,
+            float p2x, float p2y,
+            float pox, float poy);
+    // ditto, in Lat & Long co-ords
+    static float DistanceToLineLL(float p1Lat, float p1Lon,
+            float p2Lat, float p2Lon,
+            float poLat, float poLon);
     
     //  Accessors
-
     SelectableItemList *GetSelectList()
     {
         return pSelectList;
     }
 
 private:
-    void CalcSelectRadius();
-
     SelectableItemList *pSelectList;
-    int pixelRadius;
-    float selectRadius;
+    //int pixelRadius;
+    float selectRadius_NM;          // defines select distance in NM
 };
 
 #endif
