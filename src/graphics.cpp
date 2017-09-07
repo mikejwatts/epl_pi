@@ -33,9 +33,6 @@
 
 #include "wx/wxprec.h"
 
-//PPW tests for rollover bug
-#include <wx/msgdlg.h>
-
 #ifndef  WX_PRECOMP
 #include "wx/wx.h"
 #endif //precompiled headers
@@ -45,9 +42,6 @@
 #include <GL/glu.h>
 #endif
 
-// PPW Changes for new version. Removed reference to local header replaced with wxwidgets library
-//#include "graphics.h"
-#include <wx/graphics.h>
 #include "TexFont.h"
 void RenderGLText(TexFont *ptf, wxString &msg, wxFont *font, int xp, int yp, double angle);
 void DrawGLRoundedCorner(int x, int y, double sa, double arc, float rad);

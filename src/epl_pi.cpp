@@ -1,6 +1,10 @@
 /***************************************************************************
 *
 * Project:  OpenCPN
+* 07 Sep 17 PPW Removed debbugging code returned to older version of Find
+* selected call to improve bearing line selections and added in live 
+* bearing line check on rollover and if true drop out of function until 
+* user no longer in radar mode. Also oother various fixes applied.
 * 20 Apr 17 PPW Replaced cocked hat drop for bearing line instersects with 
 *				waypoint object using API call.
 *				Added in preferences menu item to automatically connect 
@@ -40,8 +44,6 @@
 */
 
 #include "wx/wxprec.h"
-//PPW added to stop undefined type error with wxGraphicsContext
-#include "wx/graphics.h"
 
 #ifndef  WX_PRECOMP
 #include "wx/wx.h"
@@ -53,11 +55,10 @@
 #include "vector2d.h"
 #include <algorithm>
 
-//PPW
-#include <iostream>
+// Adds standard time and string stream functionality on track output
 #include <iomanip>
-#include <ctime>
 #include <sstream>
+//Toolbar header
 #include "EplUIDialog.h"
 
 #if !defined(NAN)
@@ -114,10 +115,8 @@ extern "C" DECL_EXP void destroy_pi(opencpn_plugin* p)
 }
 
 
-// PPW added for waypoint trial
-int iNameCnt = 0;
+// Used to check if track already added for waypoint on bearing line drop
 bool bTrackAdded = false;
-//#define GPX_EMPTY_STRING _T("")
 
 /*  These two function were taken from gpxdocument.cpp */
 int GetRandomNumber(int range_min, int range_max)
@@ -216,7 +215,7 @@ double DistanceToEdge(const double lat_p, const double lon_p,
 //---------------------------------------------------------------------------------------------------------
 
 epl_pi::epl_pi(void *ppimgr) :
-wxTimer(this), opencpn_plugin_113(ppimgr)
+wxTimer(this), opencpn_plugin_114(ppimgr)
 {
 	// Create the PlugIn icons
 	//    initialize_images();
@@ -252,9 +251,9 @@ int epl_pi::Init(void)
 	m_fix_lat = 0;
 	m_fix_lon = 0;
 
-	m_FixHatColor = wxColour(0, 128, 128);
+	m_FixHatColor = wxColour(255, 255, 0);
 	//PPW added different colour if over two points intersecting
-	m_FixHatColorOver2Points = wxColour(255, 0, 0);
+	m_FixHatColorOver2Points = wxColour(39, 232, 51);
 
 
 	// PPW get pointer to the opencpn configuration object, needed for config file location
@@ -404,8 +403,6 @@ void epl_pi::ShowPreferencesDialog(wxWindow* parent)
 // PPW Seems to be incrementaly increasing amount of times this is called each time it's selected from drop down??
 void epl_pi::PopupMenuHandler(wxCommandEvent& event)
 {
-	iNameCnt++;
-
 	// these 2 used in one of the case blocks
 	int n_brgs = m_brg_array.Count();
 	FixPoint *fix = NULL;
@@ -449,22 +446,14 @@ void epl_pi::PopupMenuHandler(wxCommandEvent& event)
 		}
 		case ID_EPL_DROP_DELETE:
 		{
-			//int iNameCnt;
 			wxString piWName = "", piWIcon = _T("Diamond"), piWGuid = "";
 			bool addedWaypoint, addedTrack;
 			PlugIn_Waypoint *piW;
 			std::ostringstream oss;
 			// we're in the fix region so compute the mid-point
 			ComputeFixPoint();
-			// PPW removed more manual point fix 
-			//fix = new FixPoint(m_fix_lat, m_fix_lon);
-			//// add the stored point as a fix
-			//m_fix_list.Add(fix);
 
-			// PPW trial dropping way point at end of bearing line using plugin API
-			// Cnt for naming and GUID
-			//++iNameCnt;
-			//piWName = _T("Brg Waypoint " + std::to_string(++iNameCnt));
+			// Dropping way point at end of bearing line using plugin API
 			// Create time object from system and string it
 			auto t = std::time(nullptr);
 			auto tm = *std::localtime(&t);
@@ -472,12 +461,10 @@ void epl_pi::PopupMenuHandler(wxCommandEvent& event)
 			auto str = oss.str();
 
 			// Create waypoint and using current calculation for centre of intersecting bearing lines drop it there
-			// using the time of droppionmg as the unique name need to use the GUID generating function instead of my
-			// incrementing int
+			// using the time of dropping as the unique name 
 			piWName = _T("Brg Fix WP: " + str);
-			//piWName = _T("Brg Waypoint " + std::to_string(iNameCnt));
-			//piWGuid = _T("9990" + std::to_string(iNameCnt));
-			// Guid left blank so it will auto generate one
+
+			// GUID parameter left blank so it will auto generate one
 			piW = new PlugIn_Waypoint(m_fix_lat, m_fix_lon, piWIcon, piWName, "");
 			addedWaypoint = AddSingleWaypoint(piW, false);  // PPW currently set to non perminant waypoints so not saved upon exit Check this ?????
 			
@@ -681,100 +668,99 @@ bool epl_pi::MouseEventHook(wxMouseEvent &event)
 		}
 	} // PPW closing if (event.RightDown() || event.LeftDown())  
 	// moved from top stop unnecessary checking of events seems to be better
+	else if (event.Dragging()){
+		if (m_sel_brg){
+			if ((SEL_POINT_A == m_sel_part) || (SEL_POINT_B == m_sel_part)){
+				double dx, dy;
+				toSM_Plugin(m_cursor_lat, m_cursor_lon, m_sel_pt_lat, m_sel_pt_lon, &dx, &dy);
+				double distance = sqrt((dx * dx) + (dy * dy));
 
-		else if (event.Dragging()){
-			if (m_sel_brg){
-				if ((SEL_POINT_A == m_sel_part) || (SEL_POINT_B == m_sel_part)){
-					double dx, dy;
-					toSM_Plugin(m_cursor_lat, m_cursor_lon, m_sel_pt_lat, m_sel_pt_lon, &dx, &dy);
-					double distance = sqrt((dx * dx) + (dy * dy));
+				double new_lat = m_sel_pt_lat;
+				double new_lon = m_sel_pt_lon;
 
-					double new_lat = m_sel_pt_lat;
-					double new_lon = m_sel_pt_lon;
+				double alpha = atan2(dx, dy);
+				if (alpha < 0)
+					alpha += 2 * PI;
 
-					double alpha = atan2(dx, dy);
-					if (alpha < 0)
-						alpha += 2 * PI;
+				double brg_perp = (m_sel_brg->GetBearingTrue() - 90) * PI / 180.;
+				if (brg_perp < 0)
+					brg_perp += 2 * PI;
 
-					double brg_perp = (m_sel_brg->GetBearingTrue() - 90) * PI / 180.;
-					if (brg_perp < 0)
-						brg_perp += 2 * PI;
+				double delta_alpha = alpha - brg_perp;
+				if (delta_alpha < 0)
+					delta_alpha += 2 * PI;
 
-					double delta_alpha = alpha - brg_perp;
-					if (delta_alpha < 0)
-						delta_alpha += 2 * PI;
+				double move_dist = distance * sin(delta_alpha);
 
-					double move_dist = distance * sin(delta_alpha);
+				double ndy = move_dist * cos(m_sel_brg->GetBearingTrue() * PI / 180.);
+				double ndx = move_dist * sin(m_sel_brg->GetBearingTrue() * PI / 180.);
 
-					double ndy = move_dist * cos(m_sel_brg->GetBearingTrue() * PI / 180.);
-					double ndx = move_dist * sin(m_sel_brg->GetBearingTrue() * PI / 180.);
+				fromSM_Plugin(ndx, ndy, m_sel_pt_lat, m_sel_pt_lon, &new_lat, &new_lon);
 
-					fromSM_Plugin(ndx, ndy, m_sel_pt_lat, m_sel_pt_lon, &new_lat, &new_lon);
-
-					//  Update the brg line parameters
-					if (SEL_POINT_A == m_sel_part){
-						m_sel_brg->m_latA = new_lat;
-						m_sel_brg->m_lonA = new_lon;
-					}
-					else if (SEL_POINT_B == m_sel_part){
-						m_sel_brg->m_latB = new_lat;
-						m_sel_brg->m_lonB = new_lon;
-					}
-
-					m_sel_brg->CalcLength();
-
-					// Update the selectable items
-					if (m_pFind){
-						m_select->DeleteSelectableSegment(m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG);
-						m_select->AddSelectableSegment(m_sel_brg->GetLatA(), m_sel_brg->GetLonA(),
-							m_sel_brg->GetLatB(), m_sel_brg->GetLonB(),
-							m_sel_brg, SEL_SEG);
-
-						m_pFind->m_slat = new_lat;
-						m_pFind->m_slon = new_lon;
-					}
-
-					GetOCPNCanvasWindow()->Refresh();
-					bret = true;
+				//  Update the brg line parameters
+				if (SEL_POINT_A == m_sel_part){
+					m_sel_brg->m_latA = new_lat;
+					m_sel_brg->m_lonA = new_lon;
 				}
-				else if (SEL_SEG == m_sel_part){
+				else if (SEL_POINT_B == m_sel_part){
+					m_sel_brg->m_latB = new_lat;
+					m_sel_brg->m_lonB = new_lon;
+				}
 
-					//  Get the Mercator offsets from original select point to this drag point 
-					double dx, dy;
-					toSM_Plugin(m_cursor_lat, m_cursor_lon, m_sel_pt_lat, m_sel_pt_lon, &dx, &dy);
+				m_sel_brg->CalcLength();
 
-					//  Add in the offsets to item point "A"
-					dx -= m_segdrag_ref_x;
-					dy -= m_segdrag_ref_y;
-
-					//   And calculate new position of item point "A"
-					double nlatA, nlonA;
-					fromSM_Plugin(dx, dy, m_sel_pt_lat, m_sel_pt_lon, &nlatA, &nlonA);
-
-					//  Set point "A"
-					m_sel_brg->m_latA = nlatA;
-					m_sel_brg->m_lonA = nlonA;
-
-					// Recalculate point "B"
-					m_sel_brg->CalcPointB();
-
-					// Update the selectable items
-					m_select->DeleteSelectablePoint(m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A);
-					m_select->DeleteSelectablePoint(m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B);
+				// Update the selectable items
+				if (m_pFind){
 					m_select->DeleteSelectableSegment(m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG);
-
-					m_select->AddSelectablePoint(m_sel_brg->GetLatA(), m_sel_brg->GetLonA(), m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A);
-					m_select->AddSelectablePoint(m_sel_brg->GetLatB(), m_sel_brg->GetLonB(), m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B);
 					m_select->AddSelectableSegment(m_sel_brg->GetLatA(), m_sel_brg->GetLonA(),
 						m_sel_brg->GetLatB(), m_sel_brg->GetLonB(),
 						m_sel_brg, SEL_SEG);
 
-
-					GetOCPNCanvasWindow()->Refresh();
-					bret = true;
+					m_pFind->m_slat = new_lat;
+					m_pFind->m_slon = new_lon;
 				}
+
+				GetOCPNCanvasWindow()->Refresh();
+				bret = true;
+			}
+			else if (SEL_SEG == m_sel_part){
+
+				//  Get the Mercator offsets from original select point to this drag point 
+				double dx, dy;
+				toSM_Plugin(m_cursor_lat, m_cursor_lon, m_sel_pt_lat, m_sel_pt_lon, &dx, &dy);
+
+				//  Add in the offsets to item point "A"
+				dx -= m_segdrag_ref_x;
+				dy -= m_segdrag_ref_y;
+
+				//   And calculate new position of item point "A"
+				double nlatA, nlonA;
+				fromSM_Plugin(dx, dy, m_sel_pt_lat, m_sel_pt_lon, &nlatA, &nlonA);
+
+				//  Set point "A"
+				m_sel_brg->m_latA = nlatA;
+				m_sel_brg->m_lonA = nlonA;
+
+				// Recalculate point "B"
+				m_sel_brg->CalcPointB();
+
+				// Update the selectable items
+				m_select->DeleteSelectablePoint(m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A);
+				m_select->DeleteSelectablePoint(m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B);
+				m_select->DeleteSelectableSegment(m_sel_brg, SELTYPE_SEG_GENERIC, SEL_SEG);
+
+				m_select->AddSelectablePoint(m_sel_brg->GetLatA(), m_sel_brg->GetLonA(), m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_A);
+				m_select->AddSelectablePoint(m_sel_brg->GetLatB(), m_sel_brg->GetLonB(), m_sel_brg, SELTYPE_POINT_GENERIC, SEL_POINT_B);
+				m_select->AddSelectableSegment(m_sel_brg->GetLatA(), m_sel_brg->GetLonA(),
+					m_sel_brg->GetLatB(), m_sel_brg->GetLonB(),
+					m_sel_brg, SEL_SEG);
+
+
+				GetOCPNCanvasWindow()->Refresh();
+				bret = true;
 			}
 		}
+	}
 	if (event.LeftUp()) {
 		if (m_sel_brg)
 			bret = true;
@@ -834,6 +820,16 @@ void epl_pi::ProcessTimerEvent(wxTimerEvent& event)
 *--------------------------------------------------------------------*/
 void epl_pi::OnRolloverPopupTimerEvent(wxTimerEvent& event)
 {
+
+	// PPW Fudge to stop halt on radar mode, loops through bearings checking for any live ones drops out of function if any found
+	int n_brgs_live_check = m_brg_array.Count();
+	for (int cnt_live_check = 0; cnt_live_check < n_brgs_live_check; cnt_live_check++) {
+		if (m_brg_array.Item(cnt_live_check)->IsLive()) {
+			//GetOCPNCanvasWindow()->Refresh(true); // PPW test for refresh of screen
+			return;
+		}
+	}
+
 	bool b_need_refresh = false;
 
 	bool showRollover = false;
@@ -916,35 +912,9 @@ void epl_pi::OnRolloverPopupTimerEvent(wxTimerEvent& event)
 	}
 	m_bshow_fix_hat = show_now;
 
-	//----------------------------------------------------------------------
-	//           any other roll-over actions
-	//----------------------------------------------------------------------
-	// DEBUGGING ONLY - create a set of points outlining an area
-	// as an example, take a outline of bearing line first
-	//if (m_brg_array.Count() > 0) {
-	//	wxPoint point;
-	//	GetCanvasPixLL(&g_ovp, &point,
-	//		m_brg_array.Item(0)->GetLatA(),
-	//		m_brg_array.Item(0)->GetLonA());
-
-	//	wxPoint point2;
-	//	GetCanvasPixLL(&g_ovp, &point2,
-	//		m_brg_array.Item(0)->GetLatB(),
-	//		m_brg_array.Item(0)->GetLonB());
-
-	//	m_hl_pt_ary = new wxPoint[4];
-	//	m_hl_pt_ary[0] = wxPoint(point2.x - 40, point2.y - 40);       // top-left
-	//	m_hl_pt_ary[1] = wxPoint(point.x - 40, point.y + 40);
-	//	m_hl_pt_ary[2] = wxPoint(point.x + 40, point.y + 40);
-	//	m_hl_pt_ary[3] = wxPoint(point2.x + 40, point2.y - 40);
-
-	//	n_hl_points = 4;
-
-	//}
-
 	if (!m_bshow_fix_hat && (NULL == m_pRolloverBrg)) {
-
-		m_pFind = m_select->FindSelection(m_cursor_lat, m_cursor_lon, SELTYPE_SEG_GENERIC, &g_ovp);
+		// PPW have changed to original FindSelection in order to use mercator selection to grab bearing lines
+		m_pFind = m_select->FindSelection(m_cursor_lat, m_cursor_lon, SELTYPE_SEG_GENERIC);
 
 		if (m_pFind){
 			for (unsigned int i = 0; i < m_brg_array.Count(); i++){
@@ -973,8 +943,6 @@ void epl_pi::OnRolloverPopupTimerEvent(wxTimerEvent& event)
 				info += degree + _T("\nID: ") + m_pRolloverBrg->GetIdent();
 
 				m_pBrgRolloverWin->SetString(info);
-
-				//                    wxSize win_size = GetSize();
 				m_pBrgRolloverWin->SetBestPosition(m_mouse_x, m_mouse_y, 16, 16, 0, wxSize(100, 100));
 				m_pBrgRolloverWin->SetBitmap(0);
 				m_pBrgRolloverWin->IsActive(true);
@@ -1016,10 +984,8 @@ bool epl_pi::RenderOverlay(wxDC &dc, PlugIn_ViewPort *vp)
 {
 	g_vp = vp;
 	Clone_VP(&g_ovp, vp);                // deep copy
-
-
-
-	double select_radius = (10 / vp->view_scale_ppm) / 1852.0;
+	// PPW change this to same calculation as for OPenGL don't know why it was different
+	double select_radius = (10 / vp->view_scale_ppm) / (1852. * 60.);
 	m_select->SetSelectLLRadius(select_radius);
 
 
@@ -1058,11 +1024,8 @@ bool epl_pi::RenderGLOverlay(wxGLContext *pcontext, PlugIn_ViewPort *vp)
 	g_vp = vp;
 	Clone_VP(&g_ovp, vp);                // deep copy
 
-	//int testh = vp->pix_height; // PPW debug only
-	//int testhw= vp->pix_width; //
-
-	double selec_radius = (10 / vp->view_scale_ppm) / (1852. * 60.);
-	m_select->SetSelectLLRadius(selec_radius);
+	double select_radius = (10 / vp->view_scale_ppm) / (1852. * 60.);
+	m_select->SetSelectLLRadius(select_radius);
 
 	// common rendering for both graphic engines
 	RenderOverlay();
@@ -1088,16 +1051,6 @@ bool epl_pi::RenderGLOverlay(wxGLContext *pcontext, PlugIn_ViewPort *vp)
 * Helper method has common parts of RenderOverlay and RenderGLOverlay.
 *--------------------------------------------------------------------*/
 void epl_pi::RenderOverlay() {
-
-	// DEBUGGING ONLY
-	// render the highlight areas
-	//if (n_hl_points > 0) {
-	//	RenderPolygon(g_pdc, 4, m_hl_pt_ary, wxColour(255, 0, 255), 150);
-	//}
-
-	//if (n_hl_points2 > 0) {
-	//	RenderPolygon(g_pdc, 4, m_hl_pt_ary2, wxColour(255, 255, 0), 150);
-	//}
 
 	for (unsigned int i = 0; i < m_brg_array.GetCount(); i++){
 		brg_line *pb = m_brg_array.Item(i);
@@ -1446,12 +1399,12 @@ void epl_pi::RenderFixHat(void)
 		triVerts[1] = wxPoint(ab.x - 1.732 * crad, ab.y + crad);
 		triVerts[2] = wxPoint(ab.x + 1.732 * crad, ab.y + crad);
 
-		RenderPolygon(g_pdc, 3, triVerts, m_FixHatColor, 250);
+		RenderPolygon(g_pdc, 3, triVerts, m_FixHatColor, 225);
 
 	}
 	else {
 		RenderRoundedRect(g_pdc, ab.x - crad, ab.y - crad,
-			crad * 2, crad * 2, 3.0, m_FixHatColor, 250);
+			crad * 2, crad * 2, 3.0, m_FixHatColorOver2Points, 225);
 	}
 }
 

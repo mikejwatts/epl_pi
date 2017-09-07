@@ -27,9 +27,6 @@
 #include "SelectItem.h"
 #include "ocpn_plugin.h"
 
-// PPW
-#include "graphics.h" 
-
 #define SELTYPE_UNKNOWN              0x0001
 #define SELTYPE_ROUTEPOINT           0x0002
 #define SELTYPE_ROUTESEGMENT         0x0004
@@ -50,15 +47,15 @@ public:
     Select();
     ~Select();
 
-    //void SetSelectPixelRadius(int radius){ pixelRadius = radius; }
     void SetSelectLLRadius(float radius){ selectRadius_NM = radius; }
     
-	SelectItem *FindSelection(float slat, float slon, int fseltype, PlugIn_ViewPort *vp = NULL);
-	SelectableItemList FindSelectionList( float slat, float slon, int fseltype );
+	SelectItem *FindSelection(float slat, float slon, int fseltype);
 
-    bool IsSegmentSelected(float p1Lat, float p1Lon,
-            float p2Lat, float p2Lon,
-            float poLat, float poLon);
+	// PPW reinstated original IsSegmentSelected need to give more meaningful parameter names once worked out which is which
+	bool Select::IsSegmentSelected(float a, float b, float c, float d, float slat, float slon);
+	/*bool IsSegmentSelected(float p1Lat, float p1Lon,  
+		float p2Lat, float p2Lon,
+		float poLat, float poLon);*/
     bool IsSelectableSegmentSelected( float slat, float slon, SelectItem *pFindSel );
 
     //    Generic Point/Segment Support
@@ -93,7 +90,6 @@ public:
 
 private:
     SelectableItemList *pSelectList;
-    //int pixelRadius;
     float selectRadius_NM;          // defines select distance in NM
 };
 

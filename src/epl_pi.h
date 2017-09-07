@@ -96,21 +96,13 @@ WX_DECLARE_OBJARRAY(brg_line *, ArrayOfBrgLines);
 WX_DECLARE_OBJARRAY(vector2D *, ArrayOf2DPoints);
 WX_DECLARE_OBJARRAY(FixPoint *, ListOfFixes);
 
-//void AlphaBlending( wxDC *pdc, int x, int y, int size_x, int size_y, float radius, wxColour color,
-//                    unsigned char transparency );
-//void RenderLine(int x1, int y1, int x2, int y2, wxColour color, int width);
-//void GLDrawLine( wxCoord x1, wxCoord y1, wxCoord x2, wxCoord y2 );
-//void RenderGLText( wxString &msg, wxFont *font, int xp, int yp, double angle);
 
 //----------------------------------------------------------------------------------------------------------
 //    The PlugIn Class Definition
 //----------------------------------------------------------------------------------------------------------
 
-// FOR DEBUGGING ONLY - array of points defining the select regions
-//extern wxPoint *m_hl_pt_ary;
-//extern int n_hl_points;
 
-class epl_pi : public wxTimer, opencpn_plugin_113
+class epl_pi : public wxTimer, opencpn_plugin_114
 {
 public:
 	epl_pi(void *ppimgr);
@@ -251,10 +243,7 @@ private:
 	wxTimer               m_RolloverPopupTimer;
 	int                   m_rollover_popup_timer_msec;
 
-	wxColour              m_FixHatColor;
-	// PPW added additional colour
-	wxColour              m_FixHatColorOver2Points;
-
+	wxColour              m_FixHatColor, m_FixHatColorOver2Points;
 
 	PI_EventHandler       *m_event_handler;
 
@@ -276,7 +265,6 @@ public:
 	~PI_EventHandler();
 
 	void OnTimerEvent(wxTimerEvent& event);
-	//void PopupMenuHandler(wxCommandEvent& event);
 
 private:
 	epl_pi              *m_parent;
@@ -294,7 +282,7 @@ typedef enum BearingTypeEnum
 
 
 //    Generic Bearing line class definition
-class brg_line
+class brg_line : public wxObject
 {
 public:
 	brg_line(double bearing, BearingTypeEnum type);
@@ -401,21 +389,6 @@ private:
 
 	wxDateTime   m_create_time;
 };
-
-// PPW Add standard wxDialog for preferences 
-// skipped having another class which inherits wxdialog and then inheriting that check correct??
-// Could split this out to own dialog class file if needed
-//class EPLPrefsDlg : public wxDialog
-//{
-//private:
-//protected:
-//	wxButton* m_sdbSizer1OK;
-//	wxButton* m_sdbSizer1Cancel;
-//public:
-//	wxCheckBox* m_cbConnectBrgWaypoints;
-//	EPLPrefsDlg(wxWindow* parent, wxWindowID id = wxID_ANY, const wxString& title = _("EPL Preferences"), const wxPoint& pos = wxDefaultPosition, const wxSize& size = wxDefaultSize, long style = wxCAPTION | wxDEFAULT_DIALOG_STYLE);
-//	~EPLPrefsDlg();
-//};
 
 
 #endif

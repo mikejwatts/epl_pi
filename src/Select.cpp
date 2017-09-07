@@ -29,10 +29,12 @@
 #endif //precompiled headers
 
 #include "Select.h"
-#include "ocpn_plugin.h"
 #include "vector2d.h"
 
 #include "epl_pi.h"
+
+#include "georef.h"
+
 
 wxPoint *m_hl_pt_ary;
 int n_hl_points;
@@ -41,7 +43,7 @@ int n_hl_points;
 Select::Select()
 {
     pSelectList = new SelectableItemList;
-    //pixelRadius = 8;
+	SetSelectLLRadius(8);
 }
 
 
@@ -290,6 +292,7 @@ bool Select::ModifySelectablePoint( float lat, float lon, void *data, int Seltyp
 }
 
 
+// PPW remove for the moment and using older IsSegmentSelected so we can use the DistanceBearingMercator function
 /** Returns true if the given pointer position, po, is within a pre-defined
  * distance ( set by selectRadius ) of the segment defined by the line p1,p2.
  *
@@ -302,21 +305,72 @@ bool Select::ModifySelectablePoint( float lat, float lon, void *data, int Seltyp
  *
  * @returns                 true if close
  */
-bool Select::IsSegmentSelected(float p1Lat, float p1Lon,
-            float p2Lat, float p2Lon,
-            float poLat, float poLon) {
+//bool Select::IsSegmentSelected(float p1Lat, float p1Lon,
+//            float p2Lat, float p2Lon,
+//            float poLat, float poLon) {
+//
+//	//if (selectRadius_NM < 0.00001){
+//	//	wxMessageBox("We have a select radius problem");
+//	//}
+//
+//    // the return from DistanceToLineLL is in NM
+//	return DistanceToLineLL(p1Lat, p1Lon, p2Lat, p2Lon, poLat, poLon)
+//		< selectRadius_NM;
+//}
 
-	//if (selectRadius_NM < 0.00001){
-	//	wxMessageBox("We have a select radius problem");
-	//}
+bool Select::IsSegmentSelected( float a, float b, float c, float d, float slat, float slon )
+{
+    double adder = 0.;
 
-    // the return from DistanceToLineLL is in NM
-	return DistanceToLineLL(p1Lat, p1Lon, p2Lat, p2Lon, poLat, poLon)
-		< selectRadius_NM;
+    if( ( c * d ) < 0. ) {
+        //    Arrange for points to be increasing longitude, c to d
+        double dist, brg;
+        DistanceBearingMercator( a, c, b, d, &brg, &dist );
+        if( brg < 180. )             // swap points?
+                {
+            double tmp;
+            tmp = c;
+            c = d;
+            d = tmp;
+            tmp = a;
+            a = b;
+            b = tmp;
+        }
+        if( d < 0. )     // idl?
+                {
+            d += 360.;
+            if( slon < 0. ) adder = 360.;
+        }
+    }
+
+//    As a course test, use segment bounding box test
+	if ((slat >= (fmin(a, b) - selectRadius_NM)) && (slat <= (fmax(a, b) + selectRadius_NM))
+		&& ((slon + adder) >= (fmin(c, d) - selectRadius_NM))
+		&& ((slon + adder) <= (fmax(c, d) + selectRadius_NM))) {
+        //    Use vectors to do hit test....
+        vector2D va, vb, vn;
+
+        //    Assuming a Mercator projection
+        double ap, cp;
+        toSM( a, c, 0., 0., &cp, &ap );
+        double bp, dp;
+        toSM( b, d, 0., 0., &dp, &bp );
+        double slatp, slonp;
+        toSM( slat, slon + adder, 0., 0., &slonp, &slatp );
+
+        va.x = slonp - cp;
+        va.y = slatp - ap;
+        vb.x = dp - cp;
+        vb.y = bp - ap;
+
+        double delta = vGetLengthOfNormal( &va, &vb, &vn );
+		if (fabs(delta) < (selectRadius_NM * 1852 * 60)) return true;
+    }
+    return false;
 }
 
 
-SelectItem *Select::FindSelection(float slat, float slon, int fseltype, PlugIn_ViewPort *vp)
+SelectItem *Select::FindSelection(float slat, float slon, int fseltype)
 {
     float a, b, c, d;
     SelectItem *pFindSel, *returnItem;
@@ -331,57 +385,34 @@ SelectItem *Select::FindSelection(float slat, float slon, int fseltype, PlugIn_V
 		exitLoop = false;
 	}
 
-	//while (node) {
 	while (!exitLoop) {
         pFindSel = node->GetData();
         if( pFindSel->m_seltype == fseltype ) {
             switch( fseltype ){
-				case SELTYPE_POINT_GENERIC:{
-                    float xFactor = 60 * cos(slat * PI / 180.0);
-                    float yFactor = 60;
-
+				case SELTYPE_POINT_GENERIC:
+				{
+					// PPW changed back to previous layout for variables due to using mercator from original IsSegmentSelected
 					a = fabs(slat - pFindSel->m_slat);
 					b = fabs(slon - pFindSel->m_slon);
 
-					if ((fabs(slat - pFindSel->m_slat) < selectRadius_NM / xFactor)  // PPW this needs work * factor selects everything / factor region too small
-						&& (fabs(slon - pFindSel->m_slon) < selectRadius_NM / yFactor))
-					{
-						/*goto find_ok;*/	//goto find_ok;  //PPW removed GOTO
+					if ((fabs(slat - pFindSel->m_slat) < selectRadius_NM)
+						&& (fabs(slon - pFindSel->m_slon) < selectRadius_NM)) {
 						returnItem = pFindSel;
+						//returnItem = NULL; //PPW test for dead lines
+						exitLoop = true;
 					}
 					break;
 				}
                 case SELTYPE_SEG_GENERIC: 
 				{
+					// PPW changed back to previous layout for variables due to using mercator from original IsSegmentSelected
                     a = pFindSel->m_slat;
-                    b = pFindSel->m_slon;
-                    c = pFindSel->m_slat2;
+                    c = pFindSel->m_slon;
+                    b = pFindSel->m_slat2;
                     d = pFindSel->m_slon2;
 
-					//// DEBUGGING ONLY
-					//if (vp){
-					//	wxPoint point;
-					//	GetCanvasPixLL(vp, &point,
-					//		pFindSel->m_slat,
-					//		pFindSel->m_slon);
-
-					//	wxPoint point2;
-					//	GetCanvasPixLL(vp, &point2,
-					//		pFindSel->m_slat2,
-					//		pFindSel->m_slon2);
-
-					//	m_hl_pt_ary = new wxPoint[4];
-					//	m_hl_pt_ary[0] = wxPoint(point2.x - 20, point2.y);       // top-left
-					//	m_hl_pt_ary[1] = wxPoint(point.x - 20, point.y);	// bottom-left
-					//	m_hl_pt_ary[2] = wxPoint(point.x + 20, point.y);	//bottom-right
-					//	m_hl_pt_ary[3] = wxPoint(point2.x + 20, point2.y);	//top-right
-
-					//	n_hl_points = 4;
-					//}
-					// deBug code over
 					if (IsSegmentSelected(a, b, c, d, slat, slon)) 
 					{
-						//goto find_ok;  //PPW removed GOTO
 						returnItem = pFindSel;
 						exitLoop = true;
 					}
@@ -392,14 +423,13 @@ SelectItem *Select::FindSelection(float slat, float slon, int fseltype, PlugIn_V
             }
         }
 
+
         node = node->GetNext();
 		if (!node){
 			exitLoop = true;
 		}
     }
 
-    /*return NULL;
-    find_ok: return pFindSel;*/  //PPW removed GOTO
 	return returnItem;
 }
 
@@ -415,54 +445,5 @@ bool Select::IsSelectableSegmentSelected( float slat, float slon, SelectItem *pF
     float d = pFindSel->m_slon2;
 
     return IsSegmentSelected( a, b, c, d, slat, slon );
-}
-
-
-SelectableItemList Select::FindSelectionList( float slat, float slon, int fseltype )
-{
-    float a, b, c, d;
-    SelectItem *pFindSel;
-    SelectableItemList ret_list;
-
-//    Iterate on the list
-    wxSelectableItemListNode *node = pSelectList->GetFirst();
-	// PPW Bad practice fall through in case statement Refactor later?
-    while( node ) {
-        pFindSel = node->GetData();
-        if( pFindSel->m_seltype == fseltype ) {
-            switch( fseltype ){
-                case SELTYPE_ROUTEPOINT:
-                case SELTYPE_TIDEPOINT:
-                case SELTYPE_CURRENTPOINT:
-				case SELTYPE_AISTARGET:{
-					float xFactor = 60 * cos(slat * PI / 180.0);
-					float yFactor = 60;
-
-					if ((fabs(slat - pFindSel->m_slat) < selectRadius_NM / xFactor)	// PPW this needs work * factor selects everything / factor region too small
-						&& (fabs(slon - pFindSel->m_slon) < selectRadius_NM / yFactor)) {
-						ret_list.Append(pFindSel);
-					}
-					break;
-				}
-				case SELTYPE_ROUTESEGMENT: 
-                case SELTYPE_TRACKSEGMENT: {
-                    a = pFindSel->m_slat;
-                    b = pFindSel->m_slon;
-                    c = pFindSel->m_slat2;
-                    d = pFindSel->m_slon2;
-
-                    if( IsSegmentSelected( a, b, c, d, slat, slon ) ) ret_list.Append( pFindSel );
-
-                    break;
-                }
-                default:
-                    break;
-            }
-        }
-
-        node = node->GetNext();
-    }
-
-    return ret_list;
 }
 
